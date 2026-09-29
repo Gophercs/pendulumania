@@ -121,10 +121,12 @@ details[open] summary::before{transform:rotate(90deg)}
     </div>
     <div class="grid" style="margin-top:8px">
       <div class="check"><button id="exportBtn">Copy settings</button><button id="linkBtn">Copy share link</button></div>
+      <div class="check"><button id="fileBtn">Download settings.json</button><button id="resetBtn">Reset to defaults</button></div>
       <textarea id="ioText" placeholder="Copied settings appear here. To use someone else's, paste their settings text or share link here and tap Apply."></textarea>
       <div class="check"><button id="importBtn" class="primary">Apply pasted settings</button></div>
     </div>
     <p class="note" id="presetNote">Your settings are also remembered automatically between visits.</p>
+    <p class="note">To bake settings into your hosted copy for everyone: tap Download settings.json and put the file next to index.html. Visitors with no saved settings of their own get those.</p>
     </details>
     <details><summary>Game (live)</summary>
     <div class="grid">
@@ -146,6 +148,8 @@ details[open] summary::before{transform:rotate(90deg)}
       <label class="row">Gantry view tilt <output id="o_gPitch"></output><input id="gPitch" type="range" min="10" max="89" step="1"></label>
       <label class="row">Gantry view set back <output id="o_gBack"></output><input id="gBack" type="range" min="0" max="1.2" step="0.01"></label>
       <label class="row">Pivot view tilt <output id="o_pPitch"></output><input id="pPitch" type="range" min="10" max="89" step="1"></label>
+      <label class="row">Standard zoom (gantry &amp; adaptive) <output id="o_zoom"></output><input id="zoom" type="range" min="0.5" max="8" step="0.1"></label>
+      <label class="row">Standard zoom (pivot) <output id="o_pZoom"></output><input id="pZoom" type="range" min="0.5" max="8" step="0.1"></label>
       <label class="row">Adaptive view: most it will pull back <output id="o_adaptMax"></output><input id="adaptMax" type="range" min="0.5" max="8" step="0.1"></label>
       <label class="row">Distance haze <output id="o_haze"></output><input id="haze" type="range" min="0" max="1" step="0.05"></label>
       <label class="check"><input type="checkbox" id="mapRot" checked> Map turns with the jib</label>
@@ -171,7 +175,7 @@ details[open] summary::before{transform:rotate(90deg)}
       <label class="row">Big towers <output id="o_towers"></output><input id="towers" type="range" min="0" max="4" step="0.1"></label>
       <label class="row">Dock workers <output id="o_workers"></output><input id="workers" type="range" min="0" max="160" step="5"></label>
       <label class="row">Service trucks <output id="o_trucks"></output><input id="trucks" type="range" min="0" max="30" step="1"></label>
-      <label class="row">Tiny people size <output id="o_peopleSize"></output><input id="peopleSize" type="range" min="1" max="6" step="0.25"></label>
+      <label class="row">People &amp; vehicles size <output id="o_peopleSize"></output><input id="peopleSize" type="range" min="0.5" max="8" step="0.25"></label>
       <label class="row">Merch you can wreck <output id="o_merchMax"></output><input id="merchMax" type="range" min="20" max="600" step="10"></label>
       <div class="check"><button id="rebuild" class="primary">Rebuild yard</button></div>
     </div>
@@ -194,7 +198,8 @@ details[open] summary::before{transform:rotate(90deg)}
       <label class="row">Gravity <output id="o_g"></output><input id="g" type="range" min="2" max="80" step="0.5"></label>
       <label class="row">Air drag <output id="o_drag"></output><input id="drag" type="range" min="0" max="0.6" step="0.01"></label>
       <label class="row">Bouncer kick <output id="o_kick"></output><input id="kick" type="range" min="0" max="120" step="1"></label>
-      <label class="row">Hit needed to topple a stack <output id="o_breakSpeed"></output><input id="breakSpeed" type="range" min="1" max="40" step="0.5"></label>
+      <label class="row">Fragility (100% = deliberately overdone) <output id="o_fragile"></output><input id="fragile" type="range" min="0" max="1" step="0.05"></label>
+      <label class="row">Hit needed to topple a stack <output id="o_breakSpeed"></output><input id="breakSpeed" type="range" min="0.5" max="40" step="0.5"></label>
       <label class="check"><input type="checkbox" id="plumbChk"> Show plumb line</label>
       <label class="check"><input type="checkbox" id="shadowChk" checked> Shadows</label>
     </div>
@@ -215,10 +220,16 @@ window.addEventListener('error', e => {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
 <script>
 function boot(main) {
-  if (window.CANNON) return main();
+  // a settings.json beside index.html becomes the built-in defaults for everyone
+  const go = () => {
+    const timeout = new Promise(r => setTimeout(() => r(null), 2500));
+    const load = fetch('settings.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null);
+    Promise.race([load, timeout]).then(j => { window.__baked = j; main(); });
+  };
+  if (window.CANNON) return go();
   const s = document.createElement('script');
   s.src = 'https://cdn.jsdelivr.net/npm/cannon@0.6.2/build/cannon.min.js';
-  s.onload = main; document.head.appendChild(s);
+  s.onload = go; document.head.appendChild(s);
 }
 boot(() => {
 const $ = id => document.getElementById(id);
@@ -227,24 +238,25 @@ const DEG = Math.PI / 180;
 
 // ---------------- parameters ----------------
 const P = {
-  speed: 1.65,
+  speed: 2.2,
   // yard (rebuild)
-  scale: 12, loadR: 2.5, cscale: 1.65, aisle: 51, blockLen: 8, blockRows: 5, stackMax: 4, hap: 0.5, loops: 0.2, towers: 2, merchMax: 250,
+  scale: 12, loadR: 2.5, cscale: 1.65, aisle: 51, blockLen: 8, blockRows: 5, stackMax: 4, hap: 0.5, loops: 0.42, towers: 2, merchMax: 250,
   // crane & load (live)
   craneH: 600, clear: 0.6,
   // motion (live). trolley speeds are multiplied by crane reach scale.
-  slewMax: 12.5, slewAcc: 5.5, slewBrake: 30, trolMax: 6.4, trolAcc: 3.8, trolBrake: 9, hoist: 15.5, curve: 1.9, winch: false,
+  slewMax: 3, slewAcc: 1.5, slewBrake: 31, trolMax: 0.8, trolAcc: 1.1, trolBrake: 9, hoist: 15.5, curve: 1.9, winch: false,
   // physics
-  g: 31, drag: 0.03, kick: 40, breakSpeed: 8, plumb: false, shadows: true,
+  g: 31, drag: 0.03, kick: 40, breakSpeed: 1, fragile: 1, plumb: false, shadows: true,
   // views
-  fov: 25, gPitch: 75, gBack: 0.15, pPitch: 68, mapRot: true, adaptMax: 3, haze: 0.4,
+  fov: 25, gPitch: 75, gBack: 0.15, pPitch: 68, zoom: 2, pZoom: 1, mapRot: true, adaptMax: 3, haze: 0.4,
   // tilt
-  tilt: true, tiltRange: 12,
-  // delivery
-  difficulty: 5, peopleSize: 2, workers: 60, sound: true, trucks: 8,
+  tilt: true, tiltRange: 7,
+  // game & little world
+  difficulty: 5, peopleSize: 3.75, workers: 60, sound: true, trucks: 8,
 };
+if (window.__baked && typeof window.__baked === 'object') for (const k in window.__baked) if (k in P) P[k] = window.__baked[k];
 const DEFAULTS = JSON.parse(JSON.stringify(P));
-const BUILTIN = { 'Big yard': DEFAULTS, "Chloe's fave (240 m reach)": Object.assign(JSON.parse(JSON.stringify(DEFAULTS)), { scale: 5 }) };
+const BUILTIN = { 'Defaults': DEFAULTS };
 const encodeSettings = o => btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const decodeSettings = t => JSON.parse(decodeURIComponent(escape(atob(t.replace(/-/g, '+').replace(/_/g, '/')))));
 function parseSettingsText(txt) {
@@ -484,7 +496,8 @@ function spawnWorkers() {
     const p = walkNodes[a].clone().lerp(walkNodes[nb], f);
     const lane = (Math.random() * 2 - 1) * laneHalf;
     workers.push({ p, from: a, to: nb, lane, h: Math.random() * 6.28, mode: 'walk', t: 0, phase: Math.random() * 10,
-      v: new THREE.Vector3(), pitch: 0, roll: 0, spin: 0, nerve: 0.6 + Math.random() * 0.8, pause: Math.random() * 3 });
+      v: new THREE.Vector3(), pitch: 0, roll: 0, spin: 0, nerve: 0.6 + Math.random() * 0.8, pause: Math.random() * 3,
+      alert: Math.random() < 0.12 ? -1 : Math.random(), diver: Math.random() < 0.45 });
   }
 }
 function laneTarget(w, out) {
@@ -524,18 +537,20 @@ function updateWorkers(dt) {
       }
     }
     const coming = (cv.x * -dx + cv.z * -dz) / d > 0.5;
-    const danger = crateLow && cs > 1 && coming ? d - R - cs * 0.45 * w.nerve : 1e9;
+    // alert ones spot it early and get clear; the oblivious ones (about 1 in 8) never look up
+    const danger = crateLow && cs > 1 && coming && w.alert >= 0 ? d - R - cs * 0.45 * w.nerve : 1e9;
+    const notice = (1.5 + 9 * Math.max(0, w.alert)) * sz;
     const tt = dt * TW;
     w.t += tt;
     switch (w.mode) {
       case 'walk': case 'flee': case 'cower': {
-        if (danger < 1.5 * sz && d < R + (2.5 + cs * 0.25) * sz) {
+        if (w.diver && danger < 1.5 * sz && d < R + (2.5 + cs * 0.25) * sz) {
           // too close: dive sideways out of the crate's path
           const px = -cv.z, pz = cv.x, side = (px * dx + pz * dz) >= 0 ? 1 : -1, pl = Math.hypot(px, pz) || 1;
           w.mode = 'dive'; w.t = 0; w.v.set(px / pl * side * 7 * sz + dx / d * 2, 3.5 * Math.sqrt(sz), pz / pl * side * 7 * sz + dz / d * 2);
           w.h = Math.atan2(w.v.x, w.v.z); yell('dive', w.p.x, w.p.z); break;
         }
-        if (danger < 5 * sz) {
+        if (danger < notice) {
           if (w.mode === 'walk') {
             // most leg it; the odd one just freezes and covers their head
             w.mode = Math.random() < 0.2 ? 'cower' : 'flee'; w.t = 0;
@@ -649,27 +664,47 @@ function makeTruck() {
   const win = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.6, 0.05), truckMat.glass); win.position.set(0, 1.65, 2.21); g.add(win);
   const bed = new THREE.Mesh(truckGeo.bed, truckMat.stripe); bed.position.set(0, 0.8, -0.9); g.add(bed);
   for (const z of [-2.25, 0.45]) { const r = new THREE.Mesh(truckGeo.rail, truckMat.body); r.position.set(0, 1.2, z); g.add(r); }
-  for (const [x, z] of [[-1, 1.4], [1, 1.4], [-1, -1.5], [1, -1.5]]) { const w = new THREE.Mesh(truckGeo.wheel, truckMat.tyre); w.position.set(x, 0.42, z); g.add(w); }
+  const front = [];
+  for (const [x, z] of [[-1, 1.4], [1, 1.4], [-1, -1.5], [1, -1.5]]) { const w = new THREE.Mesh(truckGeo.wheel, truckMat.tyre); w.position.set(x, 0.42, z); g.add(w); if (z > 0) front.push(w); }
   const beaconMat = new THREE.MeshBasicMaterial({ color: 0xff8a00 });
   const bc = new THREE.Mesh(truckGeo.beacon, beaconMat); bc.position.set(0, 2.35, 1.35); g.add(bc);
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
-  return { g, beaconMat };
+  return { g, beaconMat, front };
 }
-function truckScale() { return Math.max(1, P.peopleSize * 0.6); }
+function truckScale() { return P.peopleSize; }
 function spawnTrucks() {
   for (const tk of trucks) { scene.remove(tk.g); if (tk.body) world.removeBody(tk.body); }
   trucks = []; trucksWrecked = 0;
   if (!walkNodes.length) return;
   for (let i = 0; i < P.trucks; i++) {
-    const { g, beaconMat } = makeTruck(); scene.add(g);
-    const tk = { g, beaconMat, phase: Math.random() * 6, body: null, wreckT: 0 };
+    const { g, beaconMat, front } = makeTruck(); scene.add(g);
+    const tk = { g, beaconMat, front, phase: Math.random() * 6, body: null, wreckT: 0 };
     placeTruck(tk); trucks.push(tk);
   }
 }
 function placeTruck(tk) {
   const a = Math.floor(Math.random() * walkNodes.length), nb = walkAdj[a];
-  tk.from = a; tk.to = nb.length ? nb[Math.floor(Math.random() * nb.length)] : a; tk.f = Math.random(); tk.wait = 0;
-  tk.g.scale.setScalar(truckScale()); tk.g.rotation.set(0, 0, 0);
+  tk.from = a; tk.to = nb.length ? nb[Math.floor(Math.random() * nb.length)] : a;
+  const A = walkNodes[tk.from], B = walkNodes[tk.to], dx = B.x - A.x, dz = B.z - A.z, L = Math.hypot(dx, dz) || 1, f = Math.random();
+  const ts = truckScale(), off = laneHalf * 0.45;
+  tk.x = A.x + dx * f - dz / L * off; tk.z = A.z + dz * f + dx / L * off;
+  tk.h = Math.atan2(dx, dz); tk.v = 0; tk.steer = 0; tk.rev = 0; tk.wps = [];
+  laneSeg(tk, A, B);
+  tk.g.scale.setScalar(ts); tk.g.rotation.set(0, tk.h, 0); tk.g.quaternion.setFromEuler(tk.g.rotation);
+}
+// waypoints keep to the right of each aisle; corners get rounded naturally by the steering
+function laneSeg(tk, A, B) {
+  const dx = B.x - A.x, dz = B.z - A.z, L = Math.hypot(dx, dz) || 1, off = laneHalf * 0.45, ox = -dz / L * off, oz = dx / L * off;
+  const m = Math.min(L * 0.3, 12 * truckScale());
+  tk.wps.push({ x: A.x + ox + dx / L * m, z: A.z + oz + dz / L * m }, { x: B.x + ox - dx / L * m, z: B.z + oz - dz / L * m });
+}
+function refillWaypoints(tk) {
+  while (tk.wps.length < 6) {
+    const nb = walkAdj[tk.to].filter(n => n !== tk.from);
+    const next = nb.length ? nb[Math.floor(Math.random() * nb.length)] : tk.from;     // dead end: turn round
+    laneSeg(tk, walkNodes[tk.to], walkNodes[next]);
+    tk.from = tk.to; tk.to = next;
+  }
 }
 const _tq = new THREE.Quaternion();
 function updateTrucks(dt, rdt) {
@@ -684,25 +719,33 @@ function updateTrucks(dt, rdt) {
       tk.g.position.set(b.position.x, b.position.y - 1.2 * ts, b.position.z);
       tk.g.quaternion.set(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w);
       tk.wreckT += dt;
-      if (tk.wreckT > 8 && b.sleepState === CANNON.Body.SLEEPING) { world.removeBody(b); tk.body = null; placeTruck(tk); }
+      if (tk.wreckT > 8 && b.sleepState === CANNON.Body.SLEEPING) { world.removeBody(b); tk.body = null; placeTruck(tk); for (const fw of tk.front) fw.rotation.y = 0; }
       continue;
     }
-    const A = walkNodes[tk.from], B = walkNodes[tk.to];
-    const dx = B.x - A.x, dz = B.z - A.z, L = Math.hypot(dx, dz) || 1;
-    const ox = -dz / L * laneHalf * 0.45, oz = dx / L * laneHalf * 0.45;   // keep to one side of the aisle
-    const x = A.x + dx * tk.f + ox, z = A.z + dz * tk.f + oz;
+    refillWaypoints(tk);
+    const wb = 2.8 * ts, maxSteer = 0.62, vmax = 6 * ts * TW;
+    const Ld = Math.max(5 * ts, Math.abs(tk.v) * 1.1);
+    while (tk.wps.length > 1 && Math.hypot(tk.wps[0].x - tk.x, tk.wps[0].z - tk.z) < Ld * 0.7) tk.wps.shift();
+    let tgt = tk.wps[tk.wps.length - 1];
+    for (const wp of tk.wps) if (Math.hypot(wp.x - tk.x, wp.z - tk.z) >= Ld) { tgt = wp; break; }
+    let alpha = Math.atan2(tgt.x - tk.x, tgt.z - tk.z) - tk.h; alpha = Math.atan2(Math.sin(alpha), Math.cos(alpha));
+    let steerT = clamp(Math.atan2(2 * wb * Math.sin(alpha), Ld), -maxSteer, maxSteer);
     // give way to workers just ahead
+    const fx = Math.sin(tk.h), fz = Math.cos(tk.h);
     let blocked = false;
-    for (const w of workers) { const ex = w.p.x - x, ez = w.p.z - z; if (ex * ex + ez * ez < (4 * ts) ** 2 && (ex * dx + ez * dz) > 0) { blocked = true; break; } }
-    if (!blocked) tk.f += 7 * TW * dt / L;
-    if (tk.f >= 1) {
-      const nb = walkAdj[tk.to].filter(n => n !== tk.from);
-      tk.from = tk.to; tk.to = nb.length ? nb[Math.floor(Math.random() * nb.length)] : tk.from; tk.f = 0;
-      if (tk.to === tk.from) { const all = walkAdj[tk.from]; tk.to = all.length ? all[0] : tk.from; }
-    }
-    tk.g.position.set(x, topAt(x, z) > 1 ? 0 : 0, z);
-    const want = Math.atan2(dx, dz); let dA = want - tk.g.rotation.y; dA = Math.atan2(Math.sin(dA), Math.cos(dA));
-    tk.g.rotation.y += dA * Math.min(1, dt * 6);
+    for (const w of workers) { const ex = w.p.x - tk.x, ez = w.p.z - tk.z; if (ex * ex + ez * ez < (5 * ts) ** 2 && (ex * fx + ez * fz) > 0) { blocked = true; break; } }
+    // about to drive into containers: back up with the wheels turned the other way (a three-point turn)
+    if (tk.rev <= 0 && topAt(tk.x + fx * 3.2 * ts, tk.z + fz * 3.2 * ts) > 0.5) tk.rev = 1.2;
+    let vT;
+    if (tk.rev > 0) { tk.rev -= dt; vT = -2.5 * ts; steerT = -Math.sign(alpha || 1) * maxSteer; }
+    else vT = blocked ? 0 : vmax * clamp(1 - Math.abs(alpha) / 1.4, 0.25, 1);
+    tk.steer += clamp(steerT - tk.steer, -2.5 * dt, 2.5 * dt);          // the wheel can only turn so fast
+    tk.v += clamp(vT - tk.v, -5 * ts * dt, 2.5 * ts * dt);
+    tk.h += tk.v / wb * Math.tan(tk.steer) * dt;
+    tk.x += Math.sin(tk.h) * tk.v * dt; tk.z += Math.cos(tk.h) * tk.v * dt;
+    const x = tk.x, z = tk.z;
+    tk.g.position.set(x, 0, z); tk.g.rotation.set(0, tk.h, 0);
+    for (const fw of tk.front) fw.rotation.y = tk.steer;
     // clipped by the crate: off it goes
     const hx = x - lp.x, hz = z - lp.z, hd = Math.hypot(hx, hz) || 0.01;
     if (hd < R + 2 * ts && lp.y - R < 2.4 * ts && Math.hypot(cv.x, cv.y, cv.z) > 1.5) wreckTruck(tk, cv, hx / hd, hz / hd);
@@ -713,8 +756,8 @@ function wreckTruck(tk, cv, nx, nz) {
   const body = new CANNON.Body({ mass: 1.2 });
   const he = [1.1 * ts, 1.2 * ts, 2.3 * ts];
   body.addShape(new CANNON.Box(new CANNON.Vec3(he[0], he[1], he[2])));
-  body.position.set(tk.g.position.x, 1.2 * ts, tk.g.position.z);
-  _tq.setFromEuler(new THREE.Euler(0, tk.g.rotation.y, 0));
+  body.position.set(tk.x, 1.2 * ts, tk.z);
+  _tq.setFromEuler(new THREE.Euler(0, tk.h, 0));
   body.quaternion.set(_tq.x, _tq.y, _tq.z, _tq.w);
   body.velocity.set(cv.x * 1.2 + nx * 5, 6 + Math.hypot(cv.x, cv.z) * 0.3, cv.z * 1.2 + nz * 5);
   body.angularVelocity.set((Math.random() - 0.5) * 8, (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 8);
@@ -776,6 +819,7 @@ groundBody.addShape(new CANNON.Plane());
 groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
 world.addBody(groundBody);
 let debris = [], statics = new Map(), toTopple = [], debrisMesh = null, merch = 0;
+const DEBRIS_CAP = 1600;
 
 // ---------------- yard ----------------
 let boxes = [], yard = null, goal = null, start = null, pathNodes = [];
@@ -1037,7 +1081,7 @@ function newYard() {
 
   // debris instanced mesh sized to the merch limit
   if (debrisMesh) { scene.remove(debrisMesh); debrisMesh.dispose(); }
-  debrisMesh = new THREE.InstancedMesh(unitBox, debrisMat, P.merchMax + 40);
+  debrisMesh = new THREE.InstancedMesh(unitBox, debrisMat, DEBRIS_CAP);
   debrisMesh.castShadow = true; debrisMesh.receiveShadow = true; debrisMesh.count = 0;
   debrisMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   scene.add(debrisMesh);
@@ -1080,7 +1124,7 @@ function staticBodyFor(b) {
   body.addEventListener('collide', e => {
     if (!e.body.userData || !e.body.userData.debris) return;
     const v = Math.abs(e.contact.getImpactVelocityAlongNormal());
-    if (v > P.breakSpeed * 0.45) toTopple.push(b);
+    if (v > P.breakSpeed * Math.max(0.05, 0.45 - 0.4 * P.fragile)) toTopple.push(b);
   });
   world.addBody(body); statics.set(b, body);
 }
@@ -1090,10 +1134,14 @@ function topple(b, push) {
   const sb = statics.get(b); if (sb) { world.removeBody(sb); statics.delete(b); }
   const cx = (b.minX + b.maxX) / 2, cz = (b.minZ + b.maxZ) / 2;
   for (let k = 0; k < b.n; k++) {
-    if (merch >= P.merchMax) break;
+    if (debris.length >= DEBRIS_CAP) break;
     const body = new CANNON.Body({ mass: 1 });
     body.addShape(new CANNON.Box(new CANNON.Vec3(CW / 2 * 0.98, CH / 2 * 0.98, CD / 2 * 0.98)));
-    body.position.set(cx, (k + 0.5) * CH, cz);
+    // stacked a little carelessly: a few centimetres off and a degree or two askew, so piles are wobbly
+    const jit = 0.12 * P.fragile * P.cscale;
+    body.position.set(cx + (Math.random() - 0.5) * jit, (k + 0.5) * CH, cz + (Math.random() - 0.5) * jit);
+    body.quaternion.setFromEuler((Math.random() - 0.5) * 0.03 * P.fragile, (Math.random() - 0.5) * 0.05 * P.fragile, (Math.random() - 0.5) * 0.03 * P.fragile);
+    body.userData0 = { x: cx, y: (k + 0.5) * CH, z: cz };
     body.linearDamping = 0.02; body.angularDamping = 0.05;
     body.sleepSpeedLimit = 0.4; body.sleepTimeLimit = 1;
     body.userData = { debris: true, bouncy: !!b.bouncy };
@@ -1114,10 +1162,8 @@ function topple(b, push) {
     debris.push(body);
     debrisMesh.setColorAt(i, b.bouncy ? _c.set(0xe04fa0) : containerColour(b.ix, b.iz, k, _c));
     if (debrisMesh.instanceColor) debrisMesh.instanceColor.needsUpdate = true;
-    merch++;
   }
   debrisMesh.count = debris.length;
-  if (merch >= P.merchMax && state === 'running') { state = 'done'; showBanner(`Dock wrecked: ${merch} containers of merch trashed. Tap Retry.`); }
 }
 function unTopple() {
   for (const d of debris) world.removeBody(d);
@@ -1128,7 +1174,7 @@ function unTopple() {
   mapDirty = true;
 }
 const tmpNear = [];
-let staticTimer = 0;
+let staticTimer = 0, merchTimer = 0;
 function physicsWorld(dt) {
   // make sure piles near anything that's moving are solid in the physics world
   staticTimer -= dt;
@@ -1141,7 +1187,20 @@ function physicsWorld(dt) {
     }
   }
   world.gravity.set(0, -P.g, 0);
+  world.defaultContactMaterial.friction = 0.3 - 0.2 * P.fragile;
   world.step(1 / 90, dt, 8);
+  // merch only counts as wrecked once it's properly out of place or knocked well askew
+  merchTimer -= dt;
+  if (merchTimer <= 0) {
+    merchTimer = 0.25; let c = 0; const lim = CD * 0.8;
+    for (const d of debris) {
+      const o = d.userData0; if (!o) continue;
+      const moved = Math.hypot(d.position.x - o.x, d.position.y - o.y, d.position.z - o.z) > lim;
+      if (moved || Math.abs(d.quaternion.w) < 0.97) c++;
+    }
+    merch = c;
+    if (merch >= P.merchMax && state === 'running') { state = 'done'; showBanner(`Dock wrecked: ${merch} containers of merch trashed. Tap Retry.`); }
+  }
   while (toTopple.length) { const b = toTopple.pop(); topple(b, b.pendingPush || null); b.pendingPush = null; b.pendingPoint = null; }
 }
 const _q = new THREE.Quaternion(), _p = new THREE.Vector3(), _s = new THREE.Vector3();
@@ -1304,7 +1363,7 @@ function sphereBox(s, h, e, breakable) {
   const vn = vel.dot(n), hitSpeed = -vn / h;
   // hard enough: the stack gives way. Thin steel boxes against a very heavy swinging weight,
   // so the crate only loses the share of momentum it hands to the containers, and ploughs on through.
-  if (breakable && e >= 0 && hitSpeed > P.breakSpeed && state !== 'done') {
+  if (breakable && e >= 0 && hitSpeed > P.breakSpeed * (1 - 0.8 * P.fragile) && state !== 'done') {
     toTopple.push(s); s.queued = true;
     const keep = LOAD_MASS / (LOAD_MASS + Math.min(s.n, 4) * CONT_MASS);
     vel.addScaledVector(n, -vn * (1 - keep));
@@ -1369,13 +1428,13 @@ function viewDist() {
   return Math.max(1, (camera.position.y - cruise()) / Math.max(0.05, -_fw.y));
 }
 // pan is stored as metres sideways and metres forward along the ground, relative to the view's heading
-function applyPanZoom(v) {
+function applyPanZoom(v, base) {
   camera.getWorldDirection(_fw);
   _fh.set(_fw.x, 0, _fw.z).normalize();
   _rt.set(-_fh.z, 0, _fh.x);
   camera.position.addScaledVector(_rt, v.px).addScaledVector(_fh, v.py);
   const D = viewDist();
-  camera.position.addScaledVector(_fw, D * (1 - 1 / v.z));
+  camera.position.addScaledVector(_fw, D * (1 - 1 / (v.z * (base || 1))));
 }
 function inFrame(points, margin) {
   camera.updateMatrixWorld();
@@ -1413,11 +1472,11 @@ function updateCamera(dt) {
   yellow.depthWrite = darkMat.depthWrite = !onboard;
   if (camMode === 'gantry' || camMode === 'adaptive') {
     camera.position.set(hook.x, below, hook.z).addScaledVector(d, -P.gBack * HOOK_Y);
-    aim(P.gPitch, d); applyPanZoom(view[camMode]);
+    aim(P.gPitch, d); applyPanZoom(view[camMode], P.zoom);
     if (camMode === 'adaptive') adaptiveFit(dt);
   } else if (camMode === 'pivot') {
     camera.position.set(0, below, 0).addScaledVector(d, mastHalf + 2 * S);
-    aim(P.pPitch, d); applyPanZoom(view.pivot);
+    aim(P.pPitch, d); applyPanZoom(view.pivot, P.pZoom);
   } else {
     camera.position.set(RMAX * 1.3, RMAX * 1.6 + HOOK_Y * 0.3, RMAX * 1.3); camera.lookAt(0, 0, 0);
     applyPanZoom(view.overview);
@@ -1434,7 +1493,7 @@ canvas.addEventListener('pointermove', e => {
   touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (!g2 || touches.size !== 2) return;
   const now = twoState(), v = view[camMode];
-  v.z = clamp(v.z * now.d / Math.max(1, g2.d), 0.3, 12);
+  v.z = clamp(v.z * now.d / Math.max(1, g2.d), 0.1, 12);
   // metres per pixel at the ground under the view centre
   const D = viewDist() , mpp = 2 * D * Math.tan(camera.fov * DEG / 2) / canvas.clientHeight;
   camera.getWorldDirection(_fw);
@@ -1647,6 +1706,8 @@ bind('gPitch', 'gPitch', v => v + '° down');
 bind('gBack', 'gBack', v => Math.round(v * P.craneH) + ' m');
 bind('pPitch', 'pPitch', v => v + '° down');
 bind('tiltRange', 'tiltRange', v => v + '°');
+bind('zoom', 'zoom', v => v.toFixed(1) + '×');
+bind('pZoom', 'pZoom', v => v.toFixed(1) + '×');
 bind('adaptMax', 'adaptMax', v => v.toFixed(1) + '× distance');
 bind('haze', 'haze', v => Math.round(v * 100) + '%', applyTheme);
 bind('craneH', 'craneH', v => v + ' m', () => { HOOK_Y = P.craneH; setSun(); applyTheme(); refreshOutputs(); });
@@ -1664,7 +1725,7 @@ bind('towers', 'towers', v => v.toFixed(1) + '×');
 bind('difficulty', 'difficulty', v => v + ' / 10', () => { if (state === 'countdown') par = computePar(); });
 bind('workers', 'workers', v => v);
 bind('trucks', 'trucks', v => v);
-bind('peopleSize', 'peopleSize', v => v.toFixed(2) + '× life size', () => { if (goal) placeForeman(); });
+bind('peopleSize', 'peopleSize', v => v.toFixed(2) + '× life size', () => { if (goal) placeForeman(); for (const tk of trucks) tk.g.scale.setScalar(truckScale()); });
 bind('merchMax', 'merchMax', v => v + ' containers');
 bind('slewMax', 'slewMax', v => v + '°/s');
 bind('slewAcc', 'slewAcc', v => v + '°/s²');
@@ -1677,60 +1738,5 @@ bind('hoistSp', 'hoist', v => v + ' m/s');
 bind('g', 'g', v => v.toFixed(1) + ' m/s²');
 bind('drag', 'drag', v => v.toFixed(2));
 bind('kick', 'kick', v => v + ' m/s');
-bind('breakSpeed', 'breakSpeed', v => v + ' m/s');
-$('plumbChk').onchange = e => { P.plumb = e.target.checked; };
-$('winchChk').checked = P.winch;
-$('winchChk').onchange = e => { P.winch = e.target.checked; $('hoist').hidden = !P.winch; };
-$('shadowChk').onchange = e => { P.shadows = e.target.checked; sun.castShadow = P.shadows; };
-$('mapRot').onchange = e => { P.mapRot = e.target.checked; };
-$('tiltChk').onchange = e => { P.tilt = e.target.checked; tilt.cal = null; };
-$('soundChk').onchange = e => { P.sound = e.target.checked; };
-for (const id of ['scale', 'loadR', 'cscale']) $(id).addEventListener('input', refreshOutputs);
-for (const id of ['plumbChk', 'winchChk', 'shadowChk', 'mapRot', 'tiltChk', 'soundChk']) $(id).addEventListener('change', saveLast);
-$('presetSave').onclick = () => {
-  const name = $('presetName').value.trim();
-  if (!name) { note('Give the preset a name first.'); return; }
-  const all = userPresets(); all[name] = JSON.parse(JSON.stringify(P));
-  try { localStorage.setItem('evri-presets', JSON.stringify(all)); note(`Saved "${name}".`); } catch (e) { note('Couldn\'t save here (storage unavailable).'); }
-  fillPresetList('u:' + name);
-};
-$('presetLoad').onclick = () => {
-  const v = $('presetSel').value; if (!v) return;
-  const src = v.startsWith('b:') ? BUILTIN[v.slice(2)] : userPresets()[v.slice(2)];
-  if (!src) return;
-  Object.assign(P, JSON.parse(JSON.stringify(DEFAULTS)));
-  for (const k in src) if (k in P) P[k] = src[k];
-  syncControls(); rebuild(); saveLast(); note(`Loaded "${v.slice(2)}".`);
-};
-$('presetDel').onclick = () => {
-  const v = $('presetSel').value;
-  if (!v || v.startsWith('b:')) { note('Built-in presets can\'t be deleted.'); return; }
-  const all = userPresets(); delete all[v.slice(2)];
-  try { localStorage.setItem('evri-presets', JSON.stringify(all)); } catch (e) {}
-  fillPresetList(); note(`Deleted "${v.slice(2)}".`);
-};
-fillPresetList();
-function share(text, what) {
-  const io = $('ioText'); io.value = text; io.focus(); io.select();
-  const done = () => note(`${what} copied. Send it to whoever you like.`);
-  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, () => note(`${what} is selected in the box: copy it from there.`));
-  else note(`${what} is selected in the box: copy it from there.`);
-}
-$('exportBtn').onclick = () => share('EVRI1:' + encodeSettings(P), 'Settings');
-$('linkBtn').onclick = () => share(location.href.split('#')[0] + '#s=' + encodeSettings(P), 'Share link');
-$('importBtn').onclick = () => {
-  let src;
-  try { src = parseSettingsText($('ioText').value); } catch (e) { note("That doesn't look like settings text or a share link."); return; }
-  if (!src || typeof src !== 'object') { note("That doesn't look like settings text or a share link."); return; }
-  Object.assign(P, JSON.parse(JSON.stringify(DEFAULTS)));
-  for (const k in src) if (k in P) P[k] = src[k];
-  syncControls(); rebuild(); saveLast(); note('Pasted settings applied.');
-};
-if (fromLink) note('Using the settings from the link you opened.');
-
-setFov(); resize(); rebuild(); syncControls();
-requestAnimationFrame(frame);
-});
-</script>
-</body>
-</html>
+bind('fragile', 'fragile', v => Math.round(v * 100) + '%');
+bind('breakSpeed', 'breakSpeed', v => v + ' m/s')
