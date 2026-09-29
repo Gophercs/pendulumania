@@ -1,0 +1,743 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Stick pendulum</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#E4EAE6; --surface:#F4F7F5; --ink:#1E2B3A; --muted:#5B6B78; --line:#C3CEC8;
+  --pad:#1E2B3A; --pad-line:#3A4B5E; --accent:#F2B705; --accent-ink:#1E2B3A;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#141B22; --surface:#1C252E; --ink:#E6ECEA; --muted:#93A3AE; --line:#2E3B47;
+    --pad:#0C1218; --pad-line:#2A3947;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#141B22; --surface:#1C252E; --ink:#E6ECEA; --muted:#93A3AE; --line:#2E3B47;
+  --pad:#0C1218; --pad-line:#2A3947;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{height:100%; scroll-padding-top:env(safe-area-inset-top,0px)}
+body{
+  height:100%; margin:0; background:var(--bg); color:var(--ink);
+  font-family:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",sans-serif;
+  display:flex; flex-direction:column; overflow:hidden;
+  -webkit-user-select:none; user-select:none;
+}
+#view{position:relative; flex:1 1 auto; min-height:0}
+#view canvas{display:block; width:100%; height:100%}
+.hud{position:absolute; top:10px; left:12px; right:12px; display:flex; justify-content:space-between; align-items:flex-start; pointer-events:none}
+.readout{font-size:15px; line-height:1.3}
+.readout b{font-size:28px; font-weight:700; font-variant-numeric:tabular-nums}
+.readout span{display:block; color:var(--muted); font-size:13px}
+.hud button{pointer-events:auto}
+button,select{
+  font:inherit; font-size:15px; color:var(--ink); background:var(--surface);
+  border:1px solid var(--line); border-radius:999px; padding:9px 16px; cursor:pointer;
+}
+select{border-radius:10px; width:100%; padding:8px 10px}
+button:focus-visible, input:focus-visible, select:focus-visible{outline:3px solid var(--accent); outline-offset:2px}
+button.primary{background:var(--accent); color:var(--accent-ink); border-color:var(--accent); font-weight:700}
+.controls{flex:0 0 auto; padding:10px 14px 12px; display:flex; flex-direction:column; align-items:center; gap:10px}
+#pad{
+  position:relative; width:min(100%, calc(32svh * 1.5)); aspect-ratio:3/2;
+  background:var(--pad); border-radius:18px; touch-action:none; cursor:crosshair;
+  background-image:linear-gradient(var(--pad-line),var(--pad-line)),linear-gradient(var(--pad-line),var(--pad-line));
+  background-size:1px 100%, 100% 1px; background-position:center; background-repeat:no-repeat;
+}
+#pad .dot,#pad .ghost{position:absolute; left:50%; top:50%; border-radius:50%; transform:translate(-50%,-50%); pointer-events:none}
+#pad .dot{width:26px; height:26px; background:var(--accent); box-shadow:0 0 0 6px rgba(242,183,5,.18)}
+#pad .ghost{width:14px; height:14px; border:2px solid #fff; opacity:.55}
+#pad .hint{position:absolute; bottom:8px; width:100%; text-align:center; color:#8FA0B0; font-size:12px; pointer-events:none; transition:opacity .4s}
+.row{display:flex; gap:8px}
+.glow{position:fixed; pointer-events:none; opacity:0; z-index:4}
+.glow.l{left:0; top:0; bottom:0; width:16vw; background:linear-gradient(to right, rgba(242,120,5,.9), rgba(242,183,5,0))}
+.glow.r{right:0; top:0; bottom:0; width:16vw; background:linear-gradient(to left, rgba(242,120,5,.9), rgba(242,183,5,0))}
+.glow.t{left:0; right:0; top:0; height:12vh; background:linear-gradient(to bottom, rgba(242,120,5,.9), rgba(242,183,5,0))}
+.glow.b{left:0; right:0; bottom:0; height:12vh; background:linear-gradient(to top, rgba(242,120,5,.9), rgba(242,183,5,0))}
+#sheet{
+  position:fixed; left:0; right:0; bottom:0; max-height:78%; overflow:auto;
+  background:var(--surface); border-top:1px solid var(--line); border-radius:18px 18px 0 0;
+  padding:16px 18px calc(18px + env(safe-area-inset-bottom,0px));
+  transform:translateY(105%); transition:transform .25s ease; z-index:5;
+}
+#sheet.open{transform:none}
+@media (prefers-reduced-motion: reduce){ #sheet{transition:none} }
+#sheet h2{font-size:18px; margin:0 0 4px; display:flex; justify-content:space-between; align-items:center}
+#sheet h3{font-size:16px; margin:22px 0 4px; padding-top:12px; border-top:1px solid var(--line)}
+.field{display:grid; grid-template-columns:1fr auto; gap:2px 10px; margin:12px 0; font-size:15px}
+.field output{color:var(--muted); font-variant-numeric:tabular-nums}
+.field input[type=range], .field select{grid-column:1/-1; width:100%; accent-color:var(--accent)}
+.field small{grid-column:1/-1; color:var(--muted); font-size:13px}
+.check{display:flex; gap:10px; align-items:center; margin:12px 0; font-size:15px}
+.check input{width:20px; height:20px; accent-color:var(--accent)}
+.check.off{opacity:.5}
+.hudBtns{display:flex; flex-direction:column; gap:6px; align-items:flex-end}
+.fruitHud{display:block}
+body.nofruit .fruitHud, body.nofruit #newFruit{display:none}
+#tiltPanel{display:none; width:min(100%,480px); text-align:center; font-size:15px; color:var(--muted)}
+#tiltPanel p{margin:4px 0 10px}
+body.imu #tiltPanel{display:block}
+body.imu #pad{display:none}
+#toast{display:none; width:min(100%,480px); font-size:14px; background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:10px 12px}
+#toast.show{display:block}
+.row button{padding:9px 13px}
+.pop{position:absolute; pointer-events:none; font-weight:700; font-size:18px; color:var(--ink); transform:translate(-50%,-50%); transition:transform .9s ease-out, opacity .9s ease-in; text-shadow:0 1px 0 var(--bg)}
+#finish{position:absolute; inset:0; display:none; flex-direction:column; align-items:center; justify-content:center; gap:10px; text-align:center; background:color-mix(in srgb, var(--bg) 70%, transparent)}
+#finish.show{display:flex}
+#finish b{font-size:30px}
+#finish span{color:var(--muted)}
+</style>
+</head>
+<body>
+<div id="view">
+  <div class="hud">
+    <div class="readout"><span class="fruitHud"><b id="left">0</b><span id="timeLine">fruit left</span></span><span id="swing">swing 0°</span></div>
+    <div class="hudBtns"><button id="viewBtn" aria-label="Change camera view">Phone view</button><button id="modeBtn">Tilt control</button></div>
+  </div>
+  <div id="finish"><b id="finishTitle"></b><span id="finishBest"></span><button id="again" class="primary">New fruit</button></div>
+</div>
+<div class="controls">
+  <div id="tiltPanel"><p>Hold the phone like the handle of a rod: the stick carries on out of the top. Point it where you want the tip.</p><button id="recentre" class="primary">Recentre</button></div>
+  <div id="toast" role="status"></div>
+  <div id="pad" aria-label="Rod aiming pad"><div class="ghost"></div><div class="dot"></div><div class="hint">drag to aim the rod</div></div>
+  <div class="row">
+    <button id="kick">Push</button>
+    <button id="reset">Reset</button>
+    <button id="newFruit" class="primary">New fruit</button>
+    <button id="settingsBtn">Settings</button>
+  </div>
+</div>
+<div class="glow l"></div><div class="glow r"></div><div class="glow t"></div><div class="glow b"></div>
+<div id="sheet" role="dialog" aria-label="Settings">
+  <h2>Settings <button id="done">Done</button></h2>
+  <div id="fields"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+const params = {
+  tilt:40, stick:0.30, stickAngle:30, range:25, resp:18, follow:false, recentre:false,
+  pull:0, fruit:true,
+  rope:0.30, mass:0.10, grav:1, damp:0.05, speed:1, rigid:false, trail:true,
+  cueMode:'side', vibe:true, sound:false, sfx:true, glow:true, sharp:2.5
+};
+const PHONE_W=0.075, PHONE_H=0.15, G0=9.81, DT=1/480, GROUND_Y=-1.0, BOB_R=0.02, HAND_I=0.05;
+const Y=new THREE.Vector3(0,1,0), XN=new THREE.Vector3(-1,0,0);
+const canVibrate = typeof navigator.vibrate === 'function';
+const activated=()=>!navigator.userActivation||navigator.userActivation.hasBeenActive;
+const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+const rad=d=>d*Math.PI/180;
+
+// ---------- scene ----------
+const view=document.getElementById('view');
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+view.prepend(renderer.domElement);
+const scene=new THREE.Scene();
+const camera=new THREE.PerspectiveCamera(62,1,0.01,80);
+scene.add(new THREE.HemisphereLight(0xffffff,0x8a9a92,0.85));
+const sun=new THREE.DirectionalLight(0xffffff,0.75); sun.position.set(0.5,1,0.6); scene.add(sun);
+const groundMat=new THREE.MeshLambertMaterial({color:0xC9D4CE});
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(60,60),groundMat);
+ground.rotation.x=-Math.PI/2; ground.position.y=GROUND_Y; scene.add(ground);
+let grid=null;
+function makeGrid(c){ if(grid) scene.remove(grid); grid=new THREE.GridHelper(10,100,c,c); grid.position.y=GROUND_Y+0.001; grid.material.transparent=true; grid.material.opacity=0.45; scene.add(grid); }
+
+const phone=new THREE.Mesh(new THREE.BoxGeometry(PHONE_W,PHONE_H,0.008),new THREE.MeshStandardMaterial({color:0x2a3340,roughness:.6}));
+scene.add(phone);
+function rod(r,color){ const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,1,10),new THREE.MeshStandardMaterial({color,roughness:.7})); scene.add(m); return m; }
+const stick=rod(0.004,0x7A5A3C);
+const rope=rod(0.0016,0x1E2B3A);
+const bob=new THREE.Mesh(new THREE.SphereGeometry(BOB_R,32,20),new THREE.MeshStandardMaterial({color:0xF2B705,roughness:.45}));
+scene.add(bob);
+const tipMark=new THREE.Mesh(new THREE.SphereGeometry(0.006,16,10),new THREE.MeshStandardMaterial({color:0x1E2B3A}));
+scene.add(tipMark);
+const shadow=new THREE.Mesh(new THREE.CircleGeometry(1,32),new THREE.MeshBasicMaterial({color:0x000000,transparent:true,opacity:.3,depthWrite:false}));
+shadow.rotation.x=-Math.PI/2; scene.add(shadow);
+const dropGeo=new THREE.BufferGeometry().setAttribute('position',new THREE.BufferAttribute(new Float32Array(6),3));
+scene.add(new THREE.Line(dropGeo,new THREE.LineBasicMaterial({color:0x000000,transparent:true,opacity:.12})));
+const PATCH_N=64, patchGeo=new THREE.BufferGeometry().setAttribute('position',new THREE.BufferAttribute(new Float32Array(PATCH_N*3),3));
+const patch=new THREE.LineLoop(patchGeo,new THREE.LineBasicMaterial({color:0x5B6B78,transparent:true,opacity:.5})); scene.add(patch);
+const TRAIL_N=140, trailArr=new Float32Array(TRAIL_N*3);
+const trailGeo=new THREE.BufferGeometry().setAttribute('position',new THREE.BufferAttribute(trailArr,3));
+const trail=new THREE.Line(trailGeo,new THREE.LineBasicMaterial({color:0xD99A00,transparent:true,opacity:.55})); scene.add(trail);
+let trailCount=0;
+
+// sky dome in world space, so the horizon stays put when the view turns with the phone
+const skyGeo=new THREE.SphereGeometry(30,32,16);
+skyGeo.setAttribute('color',new THREE.BufferAttribute(new Float32Array(skyGeo.attributes.position.count*3),3));
+scene.add(new THREE.Mesh(skyGeo,new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.BackSide,depthWrite:false,fog:false})));
+const cZen=new THREE.Color(), cHor=new THREE.Color(), cMix=new THREE.Color();
+function setSky(zen,hor){
+  cZen.set(zen); cHor.set(hor);
+  const pos=skyGeo.attributes.position, col=skyGeo.attributes.color;
+  for(let i=0;i<pos.count;i++){
+    const t=Math.pow(clamp(pos.getY(i)/30*1.6+0.05,0,1),0.8);
+    cMix.copy(cHor).lerp(cZen,t); col.setXYZ(i,cMix.r,cMix.g,cMix.b);
+  }
+  col.needsUpdate=true;
+}
+function applyTheme(){
+  const t=document.documentElement.dataset.theme;
+  const dark=t==='dark'||(t!=='light'&&window.matchMedia('(prefers-color-scheme: dark)').matches);
+  setSky(dark?0x0B131C:0x7FA6C8, dark?0x2B3B4A:0xE9EFF0);
+  rope.material.color.set(dark?0xDCE4E8:0x1E2B3A);
+  stick.material.color.set(dark?0xD2A874:0x6B4A2C);
+  tipMark.material.color.set(dark?0xDCE4E8:0x1E2B3A);
+  groundMat.color.set(dark?0x1D2830:0xA9B8AF);
+  makeGrid(dark?0x33424F:0xAFBDB6);
+}
+applyTheme();
+try{ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',applyTheme); }catch(e){}
+
+// ---------- rod geometry ----------
+// The phone pivots about its bottom edge (the wrist, at the origin). The stick is fixed to the
+// top edge and leans away from the screen by stickAngle, so the tip moves on a sphere around the wrist.
+const tipLocal=new THREE.Vector3();
+const qY=new THREE.Quaternion(), qP=new THREE.Quaternion();
+function orient(q,yaw,pitch){ qY.setFromAxisAngle(Y,yaw); qP.setFromAxisAngle(XN,pitch); return q.multiplyQuaternions(qY,qP); }
+function updateTipLocal(){
+  const a=rad(params.stickAngle);
+  tipLocal.set(0, PHONE_H + params.stick*Math.cos(a), -params.stick*Math.sin(a));
+}
+const PITCH_RATIO=0.7;
+const qTmp=new THREE.Quaternion(), vTmp=new THREE.Vector3();
+function updatePatch(){
+  const p=patchGeo.attributes.position.array, per=PATCH_N/4, R=rad(params.range);
+  for(let i=0;i<PATCH_N;i++){
+    const side=Math.floor(i/per), s=(i%per)/per*2-1;
+    const [u,v]=[[s,-1],[1,s],[-s,1],[-1,-s]][side];
+    orient(qTmp,u*R,rad(params.tilt)+v*R*PITCH_RATIO);
+    vTmp.copy(tipLocal).applyQuaternion(qTmp);
+    p[i*3]=vTmp.x; p[i*3+1]=vTmp.y; p[i*3+2]=vTmp.z;
+  }
+  patchGeo.attributes.position.needsUpdate=true;
+}
+
+// ---------- physics state ----------
+let yaw=0,pitch=rad(40),yawV=0,pitchV=0,tu=0,tv=0;
+const q=new THREE.Quaternion(), P=new THREE.Vector3();
+const x=new THREE.Vector3(), xp=new THREE.Vector3(), nx=new THREE.Vector3(), d=new THREE.Vector3();
+const Fbob=new THREE.Vector3(), Ffilt=new THREE.Vector3(), Ftip=new THREE.Vector3(), tau=new THREE.Vector3(), Ap=new THREE.Vector3(), corr=new THREE.Vector3();
+
+function reset(withSwing){
+  updateTipLocal(); tu=tv=0;
+  yaw=0; pitch=rad(params.tilt); yawV=pitchV=0;
+  orient(q,yaw,pitch); P.copy(tipLocal).applyQuaternion(q);
+  const ang=withSwing?rad(25):0;
+  x.set(P.x+params.rope*Math.sin(ang), P.y-params.rope*Math.cos(ang), P.z);
+  xp.copy(x); Fbob.set(0,0,0); Ffilt.set(0,0,0); trailCount=0; peak=0; hi=0; lo=0;
+}
+
+function step(dt){
+  const g=G0*params.grav, m=params.mass, R=rad(params.range), om=params.resp;
+  const yT=-tu*R, pT=rad(params.tilt)-tv*R*PITCH_RATIO;   // pad top-right = tip up and right
+  // rope's pull on the tip, minus the static weight the hand is assumed to hold up
+  Ftip.copy(Fbob).negate(); Ftip.y+=m*g;
+  tau.crossVectors(P,Ftip);
+  Ap.copy(XN).applyAxisAngle(Y,yaw);
+  const Ie=HAND_I+m*P.lengthSq();          // wrist + load inertia
+  if(imu){
+    // real hand: the rod simply follows the phone (lightly smoothed); the load can't push your arm about
+    q.slerp(qTarget,1-Math.exp(-om*2*dt));
+  } else {
+    const yawA=om*om*(yT-yaw)-2*om*yawV+tau.dot(Y)/Ie;
+    const pitA=om*om*(pT-pitch)-2*om*pitchV+tau.dot(Ap)/Ie;
+    yawV+=yawA*dt; pitchV+=pitA*dt; yaw+=yawV*dt; pitch+=pitchV*dt;
+    orient(q,yaw,pitch);
+  }
+  P.copy(tipLocal).applyQuaternion(q);
+  // bob: Verlet + drag + gravity
+  const k=1-params.damp*dt;
+  nx.set(x.x+(x.x-xp.x)*k, x.y+(x.y-xp.y)*k-g*dt*dt, x.z+(x.z-xp.z)*k);
+  d.subVectors(nx,P); const len=d.length();
+  if(params.rigid||len>params.rope){
+    corr.copy(P).addScaledVector(d,params.rope/(len||1));
+    Fbob.subVectors(corr,nx).multiplyScalar(m/(dt*dt));
+    const fm=Fbob.length(), cap=60*m*g; if(fm>cap) Fbob.multiplyScalar(cap/fm);
+    nx.copy(corr);
+  } else Fbob.set(0,0,0);
+  Ffilt.lerp(Fbob,0.05);
+  xp.copy(x); x.copy(nx);
+  if(params.fruit){ for(const b of boxes) collideBox(b); hitFruit(); }
+}
+
+function placeRod(mesh,from,to){
+  d.subVectors(to,from); const len=d.length()||1e-6;
+  mesh.position.copy(from).addScaledVector(d,.5);
+  mesh.scale.set(1,len,1);
+  mesh.quaternion.setFromUnitVectors(Y,d.divideScalar(len));
+}
+
+// ---------- camera ----------
+const views=['Phone','Side','Top']; let viewIdx=0;
+const qN=new THREE.Quaternion(), qAim=new THREE.Quaternion(), qOff=new THREE.Quaternion(), mAim=new THREE.Matrix4(), eye=new THREE.Vector3(), aim=new THREE.Vector3();
+const qCam=new THREE.Quaternion(), look=new THREE.Vector3(), topEdge=new THREE.Vector3();
+function placeCamera(){
+  const v=views[viewIdx];
+  if(v==='Phone'){
+    // The camera is bolted to the phone, aimed so the resting load sits mid-frame.
+    // With 'follow' on it turns with the phone; off, it stays at the neutral aim.
+    orient(qN,0,rad(params.tilt));
+    eye.set(0,PHONE_H/2,0).applyQuaternion(qN);
+    aim.copy(tipLocal).applyQuaternion(qN); aim.y-=params.rope-0.04;
+    qAim.setFromRotationMatrix(mAim.lookAt(eye,aim,Y));
+    qOff.copy(qN).invert().multiply(qAim);
+    qCam.copy(params.follow?q:qN).multiply(qOff);
+    camera.quaternion.copy(qCam);
+    camera.position.set(0,PHONE_H/2,0).applyQuaternion(params.follow?q:qN);
+    camera.position.add(vTmp.set(0,0,params.pull).applyQuaternion(qCam));   // pull back behind the phone
+    return;
+  }
+  orient(qTmp,0,rad(params.tilt));
+  look.copy(tipLocal).applyQuaternion(qTmp); look.y-=params.rope*0.55;
+  if(v==='Side'){ camera.up.set(0,1,0); camera.position.set(1.1,look.y+0.15,look.z*0.5); }
+  else { camera.up.set(0,0,-1); camera.position.set(look.x,look.y+1.3,look.z); }
+  camera.lookAt(look);
+}
+document.getElementById('viewBtn').addEventListener('click',e=>{
+  viewIdx=(viewIdx+1)%views.length; e.currentTarget.textContent=views[viewIdx]+' view';
+});
+function resize(){
+  const r=view.getBoundingClientRect();
+  renderer.setSize(r.width,r.height,false);
+  camera.aspect=r.width/Math.max(1,r.height); camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(view);
+
+// ---------- audio ----------
+let actx=null, gainN=null, filt=null, noiseBuf=null, hitUntil=0;
+function ensureAudio(){
+  if(!params.sound&&!params.sfx) return;
+  try{
+    if(!actx){
+      actx=new (window.AudioContext||window.webkitAudioContext)();
+      const o1=actx.createOscillator(); o1.type='sawtooth'; o1.frequency.value=58;
+      const o2=actx.createOscillator(); o2.type='square'; o2.frequency.value=59.4;
+      const m2=actx.createGain(); m2.gain.value=0.5;
+      filt=actx.createBiquadFilter(); filt.type='lowpass'; filt.Q.value=5; filt.frequency.value=160;
+      gainN=actx.createGain(); gainN.gain.value=0;
+      o1.connect(filt); o2.connect(m2); m2.connect(filt); filt.connect(gainN); gainN.connect(actx.destination);
+      o1.start(); o2.start();
+    }
+    if(actx.state==='suspended') actx.resume();
+  }catch(e){ actx=null; }
+}
+document.addEventListener('pointerdown',ensureAudio,{capture:true});
+
+// ---------- pad ----------
+const pad=document.getElementById('pad'), dot=pad.querySelector('.dot'), ghost=pad.querySelector('.ghost'), hint=pad.querySelector('.hint');
+let dragging=false;
+function fromEvent(e){
+  const r=pad.getBoundingClientRect();
+  tu=clamp((e.clientX-r.left)/r.width*2-1,-1,1);
+  tv=clamp(-((e.clientY-r.top)/r.height*2-1),-1,1);
+}
+pad.addEventListener('pointerdown',e=>{ if(tStart===null&&!finished) tStart=performance.now(); dragging=true; pad.setPointerCapture(e.pointerId); fromEvent(e); hint.style.opacity=0; });
+pad.addEventListener('pointermove',e=>{ if(dragging) fromEvent(e); });
+function release(){ dragging=false; if(params.recentre){ tu=tv=0; } }
+pad.addEventListener('pointerup',release); pad.addEventListener('pointercancel',release);
+function setPadEl(el,u,v){ el.style.left=((u+1)/2*100)+'%'; el.style.top=((1-v)/2*100)+'%'; }
+
+// ---------- buttons ----------
+document.getElementById('kick').addEventListener('click',()=>{
+  const phi=Math.random()*Math.PI*2, sp=0.9;
+  xp.x-=Math.cos(phi)*sp*DT; xp.z-=Math.sin(phi)*sp*DT;
+});
+document.getElementById('reset').addEventListener('click',()=>reset(false));
+const sheet=document.getElementById('sheet');
+document.getElementById('settingsBtn').addEventListener('click',()=>sheet.classList.add('open'));
+document.getElementById('done').addEventListener('click',()=>sheet.classList.remove('open'));
+
+// ---------- settings ----------
+const cm=v=>Math.round(v*100)+' cm';
+const spec=[
+  ['h','Hand and rod'],
+  ['range','tilt','Phone tilt back from upright',0,80,1,v=>v+'°'],
+  ['range','stick','Stick length',0.05,0.8,0.01,cm],
+  ['range','stickAngle','Stick angle',-30,80,1,v=>v+'°',()=>'0° carries straight on out of the top of the phone. Higher bends it out and away from you, bringing the load into view.'],
+  ['range','range','Wrist range',5,45,1,v=>'±'+v+'°',()=>'How far the pad swings the rod left and right. Up and down is 70% of this.'],
+  ['range','resp','Hand stiffness',4,40,1,v=>String(v),()=>'Low is a soft, laggy wrist that the load can tug around. High snaps to your finger.'],
+  ['range','pull','Phone view pull-back',0,0.8,0.01,v=>v<0.005?'none':cm(v),()=>'Moves the phone-view camera back behind your hand.'],
+  ['check','follow','View moves with the phone'],
+  ['check','recentre','Rod returns to centre when you let go'],
+  ['h','Pendulum and world'],
+  ['range','rope','Rope length',0.08,0.8,0.01,cm,v=>'Natural swing: '+(2*Math.PI*Math.sqrt(v/(G0*params.grav))).toFixed(2)+' s per full swing'],
+  ['range','mass','Weight',0.01,1,0.01,v=>v<1?Math.round(v*1000)+' g':'1 kg',()=>'Only matters because the wrist has give in it: heavier loads tug the rod about more.'],
+  ['range','grav','Gravity',0.2,2.5,0.05,v=>(v*G0).toFixed(1)+' m/s²'],
+  ['range','damp','Air drag',0,1,0.01,v=>v.toFixed(2)],
+  ['range','speed','Game speed',0.2,2,0.05,v=>'×'+v.toFixed(2)],
+  ['check','rigid','Rigid rod instead of rope'],
+  ['check','trail','Show trail'],
+  ['check','fruit','Fruit shelves'],
+  ['h','Rhythm cue'],
+  ['select','cueMode','Cue on',[['side','Sideways tug on the rod (ends of the swing)'],['total','Total pull on the rod (bottom of the swing)']]],
+  ['range','sharp','Cue sharpness',1,6,0.5,v=>v.toFixed(1),()=>'Higher makes the cue a shorter burst around the peak.'],
+  ['check','vibe', canVibrate?'Vibration':'Vibration (not available in this browser)'],
+  ['check','sound','Rumble sound'],
+  ['check','sfx','Hit sounds'],
+  ['check','glow','Screen edge glow'],
+];
+const fields=document.getElementById('fields'), refreshers=[], inputs={};
+spec.forEach(s=>{
+  if(s[0]==='h'){ const h=document.createElement('h3'); h.textContent=s[1]; fields.appendChild(h); return; }
+  if(s[0]==='range'){
+    const [,key,label,min,max,st,fmt,note]=s;
+    const f=document.createElement('label'); f.className='field';
+    f.innerHTML=`<span>${label}</span><output></output><input type="range" min="${min}" max="${max}" step="${st}" value="${params[key]}">${note?'<small></small>':''}`;
+    const inp=f.querySelector('input'), out=f.querySelector('output'), sm=f.querySelector('small');
+    const show=()=>{ out.textContent=fmt(params[key]); if(sm) sm.textContent=note(params[key]); };
+    inp.addEventListener('input',()=>{ params[key]=parseFloat(inp.value); updateTipLocal(); refreshers.forEach(r=>r()); });
+    inputs[key]=inp; refreshers.push(show); fields.appendChild(f); return;
+  }
+  if(s[0]==='check'){
+    const [,key,label]=s;
+    const f=document.createElement('label'); f.className='check'+(key==='vibe'&&!canVibrate?' off':'');
+    f.innerHTML=`<input type="checkbox" ${params[key]&&!(key==='vibe'&&!canVibrate)?'checked':''} ${key==='vibe'&&!canVibrate?'disabled':''}><span>${label}</span>`;
+    f.querySelector('input').addEventListener('change',e=>{
+      params[key]=e.target.checked;
+      if(key==='recentre'&&params.recentre&&!dragging){ tu=tv=0; }
+      if(key==='sound'||key==='sfx') ensureAudio();
+      if(key==='fruit') setFruit(params.fruit);
+    });
+    fields.appendChild(f); return;
+  }
+  if(s[0]==='select'){
+    const [,key,label,opts]=s;
+    const f=document.createElement('label'); f.className='field';
+    f.innerHTML=`<span>${label}</span><span></span><select>${opts.map(([v,t])=>`<option value="${v}" ${params[key]===v?'selected':''}>${t}</option>`).join('')}</select>`;
+    f.querySelector('select').addEventListener('change',e=>{ params[key]=e.target.value; hi=lo=0; });
+    fields.appendChild(f);
+  }
+});
+if(!canVibrate) params.vibe=false;
+refreshers.forEach(r=>r());
+
+// ---------- rhythm cue ----------
+let hi=0, lo=0, level=0;
+const cueDir=new THREE.Vector3(), rodDir=new THREE.Vector3(), camR=new THREE.Vector3(), camU=new THREE.Vector3();
+const glows={l:document.querySelector('.glow.l'),r:document.querySelector('.glow.r'),t:document.querySelector('.glow.t'),b:document.querySelector('.glow.b')};
+function updateCue(fdt){
+  const mg=params.mass*G0*params.grav;
+  cueDir.copy(Ffilt).negate();                      // rope pulls the tip towards the load
+  if(params.cueMode==='side'){
+    rodDir.copy(P).normalize();
+    cueDir.addScaledVector(rodDir,-cueDir.dot(rodDir));
+  }
+  const raw=cueDir.length()/mg;
+  const span0=Math.max(hi-lo,0);
+  hi=Math.max(raw,hi-span0*0.6*fdt);
+  lo=Math.min(raw,lo+span0*0.6*fdt);
+  const span=hi-lo;
+  level=span>0.04?Math.pow(clamp((raw-lo)/span,0,1),params.sharp):0;
+
+  if(params.glow&&level>0.01){
+    camR.set(1,0,0).applyQuaternion(camera.quaternion);
+    camU.set(0,1,0).applyQuaternion(camera.quaternion);
+    let sx=cueDir.dot(camR), sy=cueDir.dot(camU); const n=Math.hypot(sx,sy)||1; sx/=n; sy/=n;
+    glows.r.style.opacity=level*Math.max(0,sx); glows.l.style.opacity=level*Math.max(0,-sx);
+    glows.t.style.opacity=level*Math.max(0,sy); glows.b.style.opacity=level*Math.max(0,-sy);
+  } else { for(const k in glows) glows[k].style.opacity=0; }
+
+  if(actx&&gainN){
+    gainN.gain.setTargetAtTime(params.sound?level*0.45:0,actx.currentTime,0.02);
+    filt.frequency.setTargetAtTime(160+level*800,actx.currentTime,0.02);
+  }
+}
+// Vibration API is on/off only, so fake a graduated rumble with pulse width
+setInterval(()=>{
+  if(!params.vibe||!canVibrate||!activated()||performance.now()<hitUntil) return;
+  const on=Math.round(level*40);
+  if(on>=6){ try{ navigator.vibrate(on); }catch(e){} }
+},40);
+
+// ---------- fruit shelves ----------
+const FRUIT_COLS=[0xE8452C,0x3F5FB0,0x7BC043,0x8E3B8F,0xD6336C];
+const fruitGeo=new THREE.SphereGeometry(1,20,14), fruitMats={};
+const shelfMat=new THREE.MeshStandardMaterial({color:0xA7774B,roughness:.8}), postMat=new THREE.MeshStandardMaterial({color:0x6B5540,roughness:.8});
+let rig=null, boxes=[], fruits=[], fruitLeft=0, tStart=null, finished=false, lastHit=0, combo=0;
+const rnd=(a,b)=>a+Math.random()*(b-a);
+function addBox(group,mat,cx,cy,cz,w,h,dd){
+  const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,dd),mat); m.position.set(cx,cy,cz); group.add(m);
+  boxes.push({min:new THREE.Vector3(cx-w/2,cy-h/2,cz-dd/2),max:new THREE.Vector3(cx+w/2,cy+h/2,cz+dd/2)});
+}
+function newLayout(){
+  if(rig) scene.remove(rig);
+  rig=new THREE.Group(); scene.add(rig); boxes=[];
+  fruits.forEach(f=>scene.remove(f.mesh)); fruits=[];
+  const qn=orient(new THREE.Quaternion(),0,rad(params.tilt));
+  const C0=tipLocal.clone().applyQuaternion(qn), R0=C0.clone(); R0.y-=params.rope;
+  const shelves=[];
+  for(let t=0;t<600&&shelves.length<5;t++){
+    const c=new THREE.Vector3(R0.x+rnd(-0.18,0.18),R0.y+rnd(-0.05,0.12),R0.z+rnd(-0.22,0.04));
+    if(c.distanceTo(C0)>params.rope+0.1) continue;                         // out of reach
+    if(Math.hypot(c.x-R0.x,c.z-R0.z)<0.1&&c.y>R0.y-0.08) continue;           // on top of the resting load / the rope
+    if(shelves.some(s=>Math.hypot(s.x-c.x,s.z-c.z)<0.13&&Math.abs(s.y-c.y)<0.09)) continue;
+    shelves.push(c);
+  }
+  const W=0.11,H=0.008,D=0.05;
+  shelves.forEach(c=>{
+    addBox(rig,shelfMat,c.x,c.y,c.z,W,H,D);
+    [-0.028,0.028].forEach(off=>{
+      const r=rnd(0.015,0.022), col=FRUIT_COLS[Math.floor(Math.random()*FRUIT_COLS.length)];
+      if(!fruitMats[col]) fruitMats[col]=new THREE.MeshStandardMaterial({color:col,roughness:.5});
+      const mesh=new THREE.Mesh(fruitGeo,fruitMats[col]); mesh.scale.setScalar(r); scene.add(mesh);
+      const pos=new THREE.Vector3(c.x+off,c.y+H/2+r,c.z+rnd(-0.008,0.008)); mesh.position.copy(pos);
+      fruits.push({mesh,r,col,pos,vel:new THREE.Vector3(),state:0,m:0.05*Math.pow(r/0.02,3)});
+    });
+  });
+  fruitLeft=fruits.length; tStart=null; finished=false;
+  document.getElementById('finish').classList.remove('show');
+}
+
+// load vs shelves and posts
+const cp=new THREE.Vector3(), nrm=new THREE.Vector3(), vb=new THREE.Vector3(), rel=new THREE.Vector3();
+function collideBox(b){
+  cp.set(clamp(x.x,b.min.x,b.max.x),clamp(x.y,b.min.y,b.max.y),clamp(x.z,b.min.z,b.max.z));
+  nrm.subVectors(x,cp); const dist=nrm.length();
+  if(dist>=BOB_R) return;
+  vb.subVectors(x,xp);
+  if(dist<1e-7){ nrm.set(0,1,0); x.y=b.max.y+BOB_R; } else { nrm.divideScalar(dist); x.addScaledVector(nrm,BOB_R-dist); }
+  const vn=vb.dot(nrm);
+  if(vn<0){ vb.addScaledVector(nrm,-1.3*vn); vb.multiplyScalar(0.92); }
+  xp.copy(x).sub(vb);
+}
+// load vs fruit: a proper momentum exchange, so the weight slider matters here
+function hitFruit(){
+  for(const f of fruits){
+    if(f.state>1) continue;
+    nrm.subVectors(x,f.pos); const dist=nrm.length(), minD=BOB_R+f.r;
+    if(dist>=minD||dist<1e-7) continue;
+    nrm.divideScalar(dist);
+    vb.subVectors(x,xp).divideScalar(DT);
+    rel.subVectors(vb,f.vel); const closing=-rel.dot(nrm);
+    f.pos.copy(x).addScaledVector(nrm,-minD-0.0005);
+    if(closing<=0) continue;
+    const mb=params.mass, J=1.4*closing/(1/mb+1/f.m);
+    vb.addScaledVector(nrm,J/mb); f.vel.addScaledVector(nrm,-J/f.m); f.vel.y+=0.25*closing;
+    xp.copy(x).addScaledVector(vb,-DT);
+    if(f.state===0){ f.state=1; fruitLeft--; onHit(f,closing); }
+    if(closing>0.9) burst(f);
+  }
+}
+
+// juice
+const PN=600, pPos=new Float32Array(PN*3).fill(-100), pCol=new Float32Array(PN*3), pVel=new Float32Array(PN*3), pLife=new Float32Array(PN);
+let pNext=0;
+const dotCanvas=document.createElement('canvas'); dotCanvas.width=dotCanvas.height=32;
+{ const c=dotCanvas.getContext('2d'); c.fillStyle='#fff'; c.beginPath(); c.arc(16,16,14,0,Math.PI*2); c.fill(); }
+const pGeo=new THREE.BufferGeometry();
+pGeo.setAttribute('position',new THREE.BufferAttribute(pPos,3)); pGeo.setAttribute('color',new THREE.BufferAttribute(pCol,3));
+scene.add(new THREE.Points(pGeo,new THREE.PointsMaterial({size:0.008,vertexColors:true,map:new THREE.CanvasTexture(dotCanvas),transparent:true,alphaTest:0.4,sizeAttenuation:true})));
+const colTmp=new THREE.Color();
+function burst(f){
+  f.state=3; f.mesh.visible=false; colTmp.set(f.col);
+  for(let k=0;k<40;k++){
+    const i=pNext++%PN;
+    pPos[i*3]=f.pos.x; pPos[i*3+1]=f.pos.y; pPos[i*3+2]=f.pos.z;
+    const th=Math.random()*Math.PI*2, ph=Math.acos(rnd(-1,1)), sp=rnd(0.3,1.4);
+    pVel[i*3]=f.vel.x*0.4+Math.sin(ph)*Math.cos(th)*sp;
+    pVel[i*3+1]=f.vel.y*0.4+Math.cos(ph)*sp+0.4;
+    pVel[i*3+2]=f.vel.z*0.4+Math.sin(ph)*Math.sin(th)*sp;
+    pCol[i*3]=colTmp.r; pCol[i*3+1]=colTmp.g; pCol[i*3+2]=colTmp.b; pLife[i]=8;
+  }
+  pGeo.attributes.color.needsUpdate=true;
+  playSplat(1.5);
+}
+function playSplat(strength){
+  if(!actx||!params.sfx) return;
+  if(!noiseBuf){ noiseBuf=actx.createBuffer(1,actx.sampleRate*0.3,actx.sampleRate); const ch=noiseBuf.getChannelData(0); for(let i=0;i<ch.length;i++) ch[i]=Math.random()*2-1; }
+  const t=actx.currentTime, amp=Math.min(1,strength/2)*0.7;
+  const src=actx.createBufferSource(); src.buffer=noiseBuf;
+  const bp=actx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=500+strength*400; bp.Q.value=0.8;
+  const g=actx.createGain(); g.gain.setValueAtTime(amp,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.25);
+  src.connect(bp); bp.connect(g); g.connect(actx.destination); src.start(t); src.stop(t+0.3);
+  const o=actx.createOscillator(); o.frequency.setValueAtTime(140,t); o.frequency.exponentialRampToValueAtTime(45,t+0.12);
+  const og=actx.createGain(); og.gain.setValueAtTime(amp*0.8,t); og.gain.exponentialRampToValueAtTime(0.001,t+0.15);
+  o.connect(og); og.connect(actx.destination); o.start(t); o.stop(t+0.16);
+}
+const popV=new THREE.Vector3();
+function popup(text,pos){
+  popV.copy(pos).project(camera); if(popV.z>1) return;
+  const el=document.createElement('div'); el.className='pop'; el.textContent=text;
+  el.style.left=((popV.x+1)/2*100)+'%'; el.style.top=((1-popV.y)/2*100)+'%';
+  view.appendChild(el);
+  requestAnimationFrame(()=>{ el.style.transform='translate(-50%,-180%)'; el.style.opacity=0; });
+  setTimeout(()=>el.remove(),950);
+}
+function onHit(f,speed){
+  const now=performance.now();
+  if(tStart===null) tStart=now;
+  if(params.vibe&&canVibrate){ const ms=Math.round(clamp(15+speed*30,15,80)); hitUntil=now+ms+20; try{ navigator.vibrate(ms); }catch(e){} }
+  if(speed<=0.9) playSplat(speed*0.6);
+  combo=(now-lastHit<700)?combo+1:1; lastHit=now;
+  if(combo>=2) popup(combo+' in one swing',f.pos);
+  if(fruitLeft===0) finish(now);
+}
+let best=null; try{ const b=parseFloat(localStorage.getItem('stickPendulumBest')); if(b>0) best=b; }catch(e){}
+function finish(now){
+  finished=true;
+  const t=(now-(tStart??now))/1000;
+  const isBest=best===null||t<best; if(isBest){ best=t; try{ localStorage.setItem('stickPendulumBest',String(t)); }catch(e){} }
+  document.getElementById('finishTitle').textContent='Cleared in '+t.toFixed(1)+' s';
+  document.getElementById('finishBest').textContent=isBest?'New best':'Best '+best.toFixed(1)+' s';
+  setTimeout(()=>document.getElementById('finish').classList.add('show'),600);
+}
+const leftEl=document.getElementById('left'), timeEl=document.getElementById('timeLine');
+let shownLeft=-1;
+function updateGame(dt,now){
+  const g=G0*params.grav;
+  for(const f of fruits){
+    if(f.state===1){
+      f.vel.y-=g*dt; f.vel.multiplyScalar(1-0.1*dt); f.pos.addScaledVector(f.vel,dt);
+      if(f.pos.y-f.r<GROUND_Y){
+        if(f.vel.y<-2.2){ burst(f); continue; }
+        f.pos.y=GROUND_Y+f.r; f.vel.y*=-0.3; f.vel.x*=0.8; f.vel.z*=0.8;
+        if(f.vel.lengthSq()<0.01) f.state=2;
+      }
+      f.mesh.position.copy(f.pos);
+    } else if(f.state===0) f.mesh.position.copy(f.pos);
+  }
+  let moved=false;
+  for(let i=0;i<PN;i++){
+    if(pLife[i]<=0) continue;
+    pLife[i]-=dt; moved=true;
+    if(pLife[i]<=0){ pPos[i*3+1]=-100; continue; }
+    if(pPos[i*3+1]>GROUND_Y+0.003){
+      pVel[i*3+1]-=g*dt;
+      pPos[i*3]+=pVel[i*3]*dt; pPos[i*3+1]+=pVel[i*3+1]*dt; pPos[i*3+2]+=pVel[i*3+2]*dt;
+      if(pPos[i*3+1]<=GROUND_Y+0.003){ pPos[i*3+1]=GROUND_Y+0.003; pLife[i]=Math.min(pLife[i],5); }
+    }
+  }
+  if(moved) pGeo.attributes.position.needsUpdate=true;
+  if(fruitLeft!==shownLeft){ leftEl.textContent=fruitLeft; shownLeft=fruitLeft; }
+  const t=tStart===null?0:((finished?lastHit:now)-tStart)/1000;
+  timeEl.textContent='fruit left, '+t.toFixed(1)+' s';
+}
+document.getElementById('newFruit').addEventListener('click',newLayout);
+document.getElementById('again').addEventListener('click',newLayout);
+
+// ---------- fruit toggle ----------
+function setFruit(on){
+  if(rig) rig.visible=on;
+  fruits.forEach(f=>f.mesh.visible=on&&f.state<3);
+  document.body.classList.toggle('nofruit',!on);
+  if(on) newLayout();
+}
+
+// ---------- tilt (IMU) control ----------
+// deviceorientation gives alpha/beta/gamma as Z-X-Y rotations in an East-North-Up frame.
+// The phone's own axes (x right, y up the screen, z out of the screen) match our phone model exactly.
+let imu=false, gotData=false, needCal=false, orientHandler=null;
+const qTarget=new THREE.Quaternion(), qRaw=new THREE.Quaternion(), qCal=new THREE.Quaternion();
+const qM=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),-Math.PI/2);  // ENU -> scene (y up, -z ahead)
+const qa=new THREE.Quaternion(), qb=new THREE.Quaternion(), qg=new THREE.Quaternion(), qs=new THREE.Quaternion();
+const AX=new THREE.Vector3(1,0,0), AY=new THREE.Vector3(0,1,0), AZ=new THREE.Vector3(0,0,1);
+const upV=new THREE.Vector3(), backV=new THREE.Vector3();
+function screenAngle(){ try{ return rad((screen.orientation&&screen.orientation.angle)||window.orientation||0); }catch(e){ return 0; } }
+function onOrient(e){
+  if(e.beta==null) return;
+  gotData=true;
+  qa.setFromAxisAngle(AZ,rad(e.alpha||0)); qb.setFromAxisAngle(AX,rad(e.beta)); qg.setFromAxisAngle(AY,rad(e.gamma||0));
+  qRaw.copy(qM).multiply(qa).multiply(qb).multiply(qg).multiply(qs.setFromAxisAngle(AZ,-screenAngle()));
+  if(needCal){ calibrate(); needCal=false; }
+  qTarget.copy(qCal).multiply(qRaw);
+}
+function calibrate(){
+  // whichever way the rod currently points becomes "straight ahead", and its lean becomes the neutral tilt
+  upV.set(0,1,0).applyQuaternion(qRaw); backV.set(0,0,-1).applyQuaternion(qRaw);
+  const hx=upV.x+backV.x, hz=upV.z+backV.z;
+  qCal.setFromAxisAngle(Y,Math.atan2(hx,-hz));
+  const tilt=clamp(Math.round(Math.acos(clamp(upV.y,-1,1))*180/Math.PI),0,80);
+  params.tilt=tilt; if(inputs.tilt) inputs.tilt.value=tilt; refreshers.forEach(r=>r());
+}
+const toast=document.getElementById('toast');
+function say(msg){ toast.textContent=msg; toast.classList.toggle('show',!!msg); }
+async function enableTilt(){
+  say('');
+  if(typeof DeviceOrientationEvent==='undefined'){ say('This browser doesn\u2019t offer motion sensors.'); return; }
+  try{
+    if(typeof DeviceOrientationEvent.requestPermission==='function'){
+      const r=await DeviceOrientationEvent.requestPermission();
+      if(r!=='granted'){ say('Motion access was declined. On iPhone you can reset it in Safari\u2019s website settings.'); return; }
+    }
+  }catch(err){ say('Couldn\u2019t ask for motion access from inside this view. Try opening the link in your phone\u2019s browser.'); return; }
+  gotData=false; needCal=true;
+  orientHandler=onOrient; window.addEventListener('deviceorientation',orientHandler);
+  setTimeout(()=>{
+    if(gotData){ imu=true; document.body.classList.add('imu'); modeBtn.textContent='Pad control'; qTarget.copy(q); }
+    else { window.removeEventListener('deviceorientation',orientHandler); say('No motion data is arriving. The app you\u2019re viewing this in may block sensors for embedded pages \u2013 try opening the link in your phone\u2019s browser.'); }
+  },800);
+}
+function disableTilt(){
+  if(orientHandler) window.removeEventListener('deviceorientation',orientHandler);
+  imu=false; document.body.classList.remove('imu'); modeBtn.textContent='Tilt control';
+  // hand the rod back to the pad spring from wherever it is now
+  upV.set(0,1,0).applyQuaternion(q); backV.set(0,0,-1).applyQuaternion(q);
+  yaw=Math.atan2(-(upV.x+backV.x),-(upV.z+backV.z)); pitch=Math.acos(clamp(upV.y,-1,1)); yawV=pitchV=0;
+}
+const modeBtn=document.getElementById('modeBtn');
+modeBtn.addEventListener('click',()=>{ imu?disableTilt():enableTilt(); });
+document.getElementById('recentre').addEventListener('click',()=>{ needCal=true; });
+
+// ---------- loop ----------
+const swingEl=document.getElementById('swing'), topE=new THREE.Vector3();
+let peak=0, acc=0, last=performance.now(), shownPeak=-1;
+function loop(now){
+  const fdt=Math.min((now-last)/1000,0.05); last=now;
+  updatePatch();
+  acc+=fdt*params.speed;
+  while(acc>=DT){ step(DT); acc-=DT; }
+
+  const pov=views[viewIdx]==='Phone';
+  phone.visible=!pov||params.pull>0.03; stick.visible=true;
+  phone.quaternion.copy(q); phone.position.set(0,PHONE_H/2,0).applyQuaternion(q);
+  topE.set(0,PHONE_H,0).applyQuaternion(q);
+  placeRod(stick,topE,P);
+  placeRod(rope,P,x);
+  tipMark.position.copy(P);
+  bob.position.copy(x);
+  const hgt=x.y-GROUND_Y;
+  shadow.position.set(x.x,GROUND_Y+0.002,x.z);
+  const s=BOB_R*(1+hgt*1.2); shadow.scale.set(s,s,s);
+  shadow.material.opacity=clamp(0.38-hgt*0.25,0.08,0.38);
+  const dp=dropGeo.attributes.position.array;
+  dp[0]=x.x; dp[1]=x.y; dp[2]=x.z; dp[3]=x.x; dp[4]=GROUND_Y; dp[5]=x.z; dropGeo.attributes.position.needsUpdate=true;
+
+  trail.visible=params.trail;
+  if(params.trail){
+    trailArr.copyWithin(3,0,(TRAIL_N-1)*3);
+    trailArr[0]=x.x; trailArr[1]=x.y; trailArr[2]=x.z;
+    trailCount=Math.min(trailCount+1,TRAIL_N);
+    trailGeo.setDrawRange(0,trailCount); trailGeo.attributes.position.needsUpdate=true;
+  }
+
+  d.subVectors(x,P); const ang=Math.acos(clamp(-d.y/(d.length()||1),-1,1))*180/Math.PI;
+  peak=Math.max(ang,peak-12*fdt);
+  const rp=Math.round(peak); if(rp!==shownPeak){ swingEl.textContent='swing '+rp+'°'; shownPeak=rp; }
+  updateGame(fdt*params.speed, now);
+
+  const R=rad(params.range);
+  setPadEl(dot,tu,tv);
+  if(!imu) setPadEl(ghost,clamp(-yaw/R,-1.2,1.2),clamp(-(pitch-rad(params.tilt))/(R*PITCH_RATIO),-1.2,1.2));
+
+  placeCamera();
+  updateCue(fdt);
+  renderer.render(scene,camera);
+  requestAnimationFrame(loop);
+}
+reset(true); newLayout(); resize();
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
