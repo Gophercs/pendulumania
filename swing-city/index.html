@@ -1739,4 +1739,74 @@ bind('g', 'g', v => v.toFixed(1) + ' m/s²');
 bind('drag', 'drag', v => v.toFixed(2));
 bind('kick', 'kick', v => v + ' m/s');
 bind('fragile', 'fragile', v => Math.round(v * 100) + '%');
-bind('breakSpeed', 'breakSpeed', v => v + ' m/s')
+bind('breakSpeed', 'breakSpeed', v => v + ' m/s');
+$('plumbChk').onchange = e => { P.plumb = e.target.checked; };
+$('winchChk').checked = P.winch;
+$('winchChk').onchange = e => { P.winch = e.target.checked; $('hoist').hidden = !P.winch; };
+$('shadowChk').onchange = e => { P.shadows = e.target.checked; sun.castShadow = P.shadows; };
+$('mapRot').onchange = e => { P.mapRot = e.target.checked; };
+$('tiltChk').onchange = e => { P.tilt = e.target.checked; tilt.cal = null; };
+$('soundChk').onchange = e => { P.sound = e.target.checked; };
+for (const id of ['scale', 'loadR', 'cscale']) $(id).addEventListener('input', refreshOutputs);
+for (const id of ['plumbChk', 'winchChk', 'shadowChk', 'mapRot', 'tiltChk', 'soundChk']) $(id).addEventListener('change', saveLast);
+$('presetSave').onclick = () => {
+  const name = $('presetName').value.trim();
+  if (!name) { note('Give the preset a name first.'); return; }
+  const all = userPresets(); all[name] = JSON.parse(JSON.stringify(P));
+  try { localStorage.setItem('evri-presets', JSON.stringify(all)); note(`Saved "${name}".`); } catch (e) { note('Couldn\'t save here (storage unavailable).'); }
+  fillPresetList('u:' + name);
+};
+$('presetLoad').onclick = () => {
+  const v = $('presetSel').value; if (!v) return;
+  const src = v.startsWith('b:') ? BUILTIN[v.slice(2)] : userPresets()[v.slice(2)];
+  if (!src) return;
+  Object.assign(P, JSON.parse(JSON.stringify(DEFAULTS)));
+  for (const k in src) if (k in P) P[k] = src[k];
+  syncControls(); rebuild(); saveLast(); note(`Loaded "${v.slice(2)}".`);
+};
+$('presetDel').onclick = () => {
+  const v = $('presetSel').value;
+  if (!v || v.startsWith('b:')) { note('Built-in presets can\'t be deleted.'); return; }
+  const all = userPresets(); delete all[v.slice(2)];
+  try { localStorage.setItem('evri-presets', JSON.stringify(all)); } catch (e) {}
+  fillPresetList(); note(`Deleted "${v.slice(2)}".`);
+};
+fillPresetList();
+function share(text, what) {
+  const io = $('ioText'); io.value = text; io.focus(); io.select();
+  const done = () => note(`${what} copied. Send it to whoever you like.`);
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, () => note(`${what} is selected in the box: copy it from there.`));
+  else note(`${what} is selected in the box: copy it from there.`);
+}
+$('exportBtn').onclick = () => share('EVRI1:' + encodeSettings(P), 'Settings');
+$('linkBtn').onclick = () => share(location.href.split('#')[0] + '#s=' + encodeSettings(P), 'Share link');
+$('importBtn').onclick = () => {
+  let src;
+  try { src = parseSettingsText($('ioText').value); } catch (e) { note("That doesn't look like settings text or a share link."); return; }
+  if (!src || typeof src !== 'object') { note("That doesn't look like settings text or a share link."); return; }
+  Object.assign(P, JSON.parse(JSON.stringify(DEFAULTS)));
+  for (const k in src) if (k in P) P[k] = src[k];
+  syncControls(); rebuild(); saveLast(); note('Pasted settings applied.');
+};
+if (fromLink) note('Using the settings from the link you opened.');
+$('fileBtn').onclick = () => {
+  const text = JSON.stringify(P, null, 2);
+  try {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = 'settings.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    note('settings.json downloaded. If nothing arrived, the text is in the box above: save it as settings.json.');
+  } catch (e) { note('Save the text in the box above as settings.json.'); }
+  $('ioText').value = text;
+};
+$('resetBtn').onclick = () => {
+  Object.assign(P, JSON.parse(JSON.stringify(DEFAULTS)));
+  syncControls(); rebuild(); saveLast(); note('Back to the defaults.');
+};
+
+setFov(); resize(); rebuild(); syncControls();
+requestAnimationFrame(frame);
+});
+</script>
+</body>
+</html>
