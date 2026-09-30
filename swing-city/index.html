@@ -74,7 +74,10 @@ textarea{font:12px/1.3 ui-monospace,monospace;width:100%;min-height:64px;backgro
 #time{font-size:46px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:.5px}
 #time.urgent{color:#ffc93a;animation:pulse .5s ease-in-out infinite alternate}
 #time.late{color:#ff4a3d;animation:shake .18s linear infinite}
-#fee{font-size:16px;font-weight:600;min-height:1.2em}
+#fee{font-size:16px;font-weight:600;min-height:1.2em;transition:color .2s}
+#fee.hit{color:#ff5a4d;animation:shake .18s linear 3}
+#popup{font-size:30px;font-weight:600;color:#ff5a4d;min-height:1.15em;line-height:1.15;transition:transform .45s ease-in,opacity .45s ease-in}
+#popup.drop{transform:translateY(62px) scale(.55);opacity:0}
 #clock.lifted{bottom:150px}
 #clock .bars{display:flex;gap:6px;align-items:center;justify-content:flex-end;font-size:11px;opacity:.9;margin-top:4px}
 #speed{font-size:12px;opacity:.85;margin-top:2px}
@@ -93,7 +96,7 @@ details[open] summary::before{transform:rotate(90deg)}
 <body>
 <div id="app">
   <canvas id="c"></canvas>
-  <div id="clock"><div id="time">0.0</div><div id="fee"></div>
+  <div id="clock"><div id="popup"></div><div id="time">0.0</div><div id="fee"></div>
     <div class="bars"><span>crate</span><div id="dmg" class="meter" title="Crate damage"><i></i></div><span>merch</span><div id="merch" class="meter" title="Merch wrecked"><i></i></div></div>
     <div id="speed"></div></div>
   <canvas id="map" aria-label="Yard map"></canvas>
@@ -175,6 +178,13 @@ details[open] summary::before{transform:rotate(90deg)}
       <label class="row">Big towers <output id="o_towers"></output><input id="towers" type="range" min="0" max="4" step="0.1"></label>
       <label class="row">Dock workers <output id="o_workers"></output><input id="workers" type="range" min="0" max="160" step="5"></label>
       <label class="row">Service trucks <output id="o_trucks"></output><input id="trucks" type="range" min="0" max="30" step="1"></label>
+      <label class="row">Reach stackers <output id="o_stackers"></output><input id="stackers" type="range" min="0" max="10" step="1"></label>
+      <label class="row">Gantry cranes <output id="o_rtgs"></output><input id="rtgs" type="range" min="0" max="8" step="1"></label>
+      <label class="row">Light towers <output id="o_lights"></output><input id="lights" type="range" min="0" max="30" step="1"></label>
+      <label class="row">Clutter <output id="o_clutter"></output><input id="clutter" type="range" min="0" max="3" step="0.25"></label>
+      <label class="row">Birds on the ground <output id="o_birds"></output><input id="birds" type="range" min="0" max="60" step="1"></label>
+      <label class="row">Gulls up high <output id="o_gulls"></output><input id="gulls" type="range" min="0" max="12" step="1"></label>
+      <label class="check"><input type="checkbox" id="quayChk" checked> Harbour on one side</label>
       <label class="row">People &amp; vehicles size <output id="o_peopleSize"></output><input id="peopleSize" type="range" min="0.5" max="8" step="0.25"></label>
       <label class="row">Merch you can wreck <output id="o_merchMax"></output><input id="merchMax" type="range" min="20" max="600" step="10"></label>
       <div class="check"><button id="rebuild" class="primary">Rebuild yard</button></div>
@@ -199,6 +209,8 @@ details[open] summary::before{transform:rotate(90deg)}
       <label class="row">Air drag <output id="o_drag"></output><input id="drag" type="range" min="0" max="0.6" step="0.01"></label>
       <label class="row">Bouncer kick <output id="o_kick"></output><input id="kick" type="range" min="0" max="120" step="1"></label>
       <label class="row">Fragility (100% = deliberately overdone) <output id="o_fragile"></output><input id="fragile" type="range" min="0" max="1" step="0.05"></label>
+      <label class="row">Counts as wrecked once moved <output id="o_wreckDist"></output><input id="wreckDist" type="range" min="0.05" max="3" step="0.05"></label>
+      <label class="row">Knocked loose but barely moved counts as <output id="o_looseCount"></output><input id="looseCount" type="range" min="0" max="1" step="0.05"></label>
       <label class="row">Hit needed to topple a stack <output id="o_breakSpeed"></output><input id="breakSpeed" type="range" min="0.5" max="40" step="0.5"></label>
       <label class="check"><input type="checkbox" id="plumbChk"> Show plumb line</label>
       <label class="check"><input type="checkbox" id="shadowChk" checked> Shadows</label>
@@ -248,11 +260,14 @@ const P = {
   // physics
   g: 31, drag: 0.03, kick: 40, breakSpeed: 1, fragile: 1, plumb: false, shadows: true,
   // views
-  fov: 25, gPitch: 75, gBack: 0.15, pPitch: 68, zoom: 2, pZoom: 1, mapRot: true, adaptMax: 3, haze: 0.4,
+  fov: 25, gPitch: 75, gBack: 0.15, pPitch: 68, zoom: 1, pZoom: 1, mapRot: true, adaptMax: 3, haze: 0.4,
   // tilt
   tilt: true, tiltRange: 7,
   // game & little world
-  difficulty: 5, peopleSize: 3.75, workers: 60, sound: true, trucks: 8,
+  difficulty: 5, peopleSize: 3.75, workers: 16, sound: true, trucks: 4,
+  wreckDist: 0.3, looseCount: 0.85,
+  stackers: 3, rtgs: 2, lights: 6, clutter: 1, birds: 14, gulls: 3, quay: true,
+  v: 2,
 };
 if (window.__baked && typeof window.__baked === 'object') for (const k in window.__baked) if (k in P) P[k] = window.__baked[k];
 const DEFAULTS = JSON.parse(JSON.stringify(P));
@@ -270,6 +285,8 @@ let fromLink = null;
 try { if (/[#&]s=/.test(location.hash)) fromLink = parseSettingsText(location.hash); } catch (e) {}
 try {
   const src = fromLink || JSON.parse(localStorage.getItem('evri-last') || 'null');
+  // older saved settings: take the new, calmer crowd sizes
+  if (src && !fromLink && (src.v || 1) < 2) { delete src.workers; delete src.trucks; src.v = 2; }
   if (src) for (const k in src) if (k in P) P[k] = src[k];
 } catch (e) {}
 let CW, CH, CD, ROW;           // container dimensions (scaled)
@@ -464,10 +481,10 @@ function animateForeman(dt) {
 let walkNodes = [], walkAdj = [], laneHalf = 5, workers = [];
 const WMAX = 160;
 const wkMat = {
-  vis: new THREE.MeshLambertMaterial({ color: 0xffd21f, emissive: 0x3a3000 }),
-  trousers: new THREE.MeshLambertMaterial({ color: 0x2d3440 }),
-  skin: new THREE.MeshLambertMaterial({ color: 0xd9a47c }),
-  hat: new THREE.MeshLambertMaterial({ color: 0xff7a00, emissive: 0x2a1200 }),
+  vis: new THREE.MeshLambertMaterial({ color: 0xffffff }),
+  trousers: new THREE.MeshLambertMaterial({ color: 0xffffff }),
+  skin: new THREE.MeshLambertMaterial({ color: 0xffffff }),
+  hat: new THREE.MeshLambertMaterial({ color: 0xffffff }),
 };
 const wGeo = {
   leg: new THREE.BoxGeometry(0.3, 0.85, 0.32).translate(0, -0.42, 0),
@@ -483,22 +500,68 @@ const wMesh = {
   head: new THREE.InstancedMesh(wGeo.head, wkMat.skin, WMAX),
   hat: new THREE.InstancedMesh(wGeo.hat, wkMat.hat, WMAX),
 };
-for (const k in wMesh) { const m = wMesh[k]; m.count = 0; m.castShadow = true; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(m); }
+for (const k in wMesh) {
+  const m = wMesh[k]; m.count = 0; m.castShadow = true; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(m.instanceMatrix.count * 3).fill(1), 3);
+  scene.add(m);
+}
+const LOOK = {
+  worker: () => ({ top: [0xffd21f, 0xffb21f, 0xff8a1f][Math.floor(Math.random() * 3)], legs: 0x2d3440, hat: [0xff7a00, 0xf5f5f0, 0xffd21f][Math.floor(Math.random() * 3)] }),
+  boss: () => ({ top: 0xf2f2ee, arms: 0xf2f2ee, legs: 0x1c2533, hat: null }),
+  suit: () => ({ top: 0x2a2e36, legs: 0x2a2e36, hat: null }),
+};
+const SKIN = [0xefc4a0, 0xd9a47c, 0xb07a52, 0x7d4f33];
+const _pc = new THREE.Color();
+function paintPerson(w, i) {
+  const L = w.look;
+  wMesh.torso.setColorAt(i, _pc.set(L.top));
+  wMesh.arm.setColorAt(i * 2, _pc.set(L.arms || L.top)); wMesh.arm.setColorAt(i * 2 + 1, _pc.set(L.arms || L.top));
+  wMesh.leg.setColorAt(i * 2, _pc.set(L.legs)); wMesh.leg.setColorAt(i * 2 + 1, _pc.set(L.legs));
+  wMesh.head.setColorAt(i, _pc.set(w.skin));
+  wMesh.hat.setColorAt(i, _pc.set(L.hat || 0xffffff));
+  for (const k in wMesh) wMesh[k].instanceColor.needsUpdate = true;
+}
 
+function newPerson(kind, p, extra) {
+  const w = Object.assign({ kind, look: LOOK[kind](), skin: SKIN[Math.floor(Math.random() * SKIN.length)],
+    p, from: 0, to: 0, lane: 0, h: Math.random() * 6.28, mode: 'walk', t: 0, phase: Math.random() * 10,
+    v: new THREE.Vector3(), pitch: 0, roll: 0, spin: 0, nerve: 0.6 + Math.random() * 0.8, pause: Math.random() * 3,
+    alert: Math.random() < 0.12 ? -1 : Math.random(), diver: Math.random() < 0.45, speed: 1 }, extra || {});
+  workers.push(w); paintPerson(w, workers.length - 1);
+  return w;
+}
 function spawnWorkers() {
   workers = [];
-  if (!walkNodes.length) return;
-  const n = Math.min(WMAX, P.workers);
-  for (let i = 0; i < n; i++) {
-    const a = Math.floor(Math.random() * walkNodes.length);
-    const nb = walkAdj[a].length ? walkAdj[a][Math.floor(Math.random() * walkAdj[a].length)] : a;
-    const f = Math.random();
-    const p = walkNodes[a].clone().lerp(walkNodes[nb], f);
-    const lane = (Math.random() * 2 - 1) * laneHalf;
-    workers.push({ p, from: a, to: nb, lane, h: Math.random() * 6.28, mode: 'walk', t: 0, phase: Math.random() * 10,
-      v: new THREE.Vector3(), pitch: 0, roll: 0, spin: 0, nerve: 0.6 + Math.random() * 0.8, pause: Math.random() * 3,
-      alert: Math.random() < 0.12 ? -1 : Math.random(), diver: Math.random() < 0.45 });
+  if (!walkNodes.length || P.workers <= 0) return;
+  const total = Math.min(WMAX, P.workers);
+  const pick = () => { const a = Math.floor(Math.random() * walkNodes.length), nb = walkAdj[a].length ? walkAdj[a][Math.floor(Math.random() * walkAdj[a].length)] : a; return [a, nb]; };
+  // most stand about in twos and threes, chatting
+  let left = total;
+  const nChatters = Math.round(total * 0.6);
+  let placed = 0;
+  while (placed < nChatters && left > 1) {
+    const [a, b] = pick(), f = 0.2 + Math.random() * 0.6;
+    const c = walkNodes[a].clone().lerp(walkNodes[b], f);
+    const dx = walkNodes[b].x - walkNodes[a].x, dz = walkNodes[b].z - walkNodes[a].z, L = Math.hypot(dx, dz) || 1, side = (Math.random() * 2 - 1) * laneHalf * 0.8;
+    c.x += -dz / L * side; c.z += dx / L * side;
+    const size = Math.min(left, Math.random() < 0.6 ? 2 : 3), a0 = Math.random() * 6.28, rad = 0.75 * P.peopleSize;
+    for (let k = 0; k < size; k++) {
+      const ang = a0 + k * 2 * Math.PI / size, p = new THREE.Vector3(c.x + Math.cos(ang) * rad, 0, c.z + Math.sin(ang) * rad);
+      const face = Math.atan2(c.x - p.x, c.z - p.z);
+      newPerson('worker', p, { mode: 'chat', home: p.clone(), face, h: face, from: a, to: b, talkT: Math.random() * 4 });
+    }
+    placed += size; left -= size;
   }
+  // the rest wander the aisles
+  for (let i = 0; i < left; i++) {
+    const [a, nb] = pick(), p = walkNodes[a].clone().lerp(walkNodes[nb], Math.random());
+    newPerson('worker', p, { from: a, to: nb, lane: (Math.random() * 2 - 1) * laneHalf });
+  }
+  // the depot boss, showing two suits around
+  const [a, nb] = pick();
+  const boss = newPerson('boss', walkNodes[a].clone().lerp(walkNodes[nb], 0.5), { from: a, to: nb, lane: 0, speed: 0.6, alert: 0.9 });
+  for (const sd of [-1, 1]) newPerson('suit', boss.p.clone().add(new THREE.Vector3(sd * 1.2 * P.peopleSize, 0, -1.6 * P.peopleSize)),
+    { mode: 'follow', leader: boss, slot: [sd * 1.1, -1.7], alert: 0.5 + Math.random() * 0.4 });
 }
 function laneTarget(w, out) {
   const A = walkNodes[w.from], B = walkNodes[w.to];
@@ -506,8 +569,10 @@ function laneTarget(w, out) {
   return out.set(B.x - dz / L * w.lane, 0, B.z + dx / L * w.lane);
 }
 const _wt = new THREE.Vector3();
+function resume(w) { w.t = 0; w.mode = w.home ? 'return' : w.leader ? 'follow' : 'walk'; }
 function launch(w, vx, vy, vz) {
   if (w.mode === 'flying') return;
+  if (state === 'running') peopleCost += COST[w.kind] || 50;
   w.mode = 'flying'; w.t = 0;
   w.v.set(vx, vy, vz);
   w.spin = (Math.random() < 0.5 ? -1 : 1) * (6 + Math.random() * 8);
@@ -543,7 +608,7 @@ function updateWorkers(dt) {
     const tt = dt * TW;
     w.t += tt;
     switch (w.mode) {
-      case 'walk': case 'flee': case 'cower': {
+      case 'walk': case 'flee': case 'cower': case 'chat': case 'return': case 'follow': {
         if (w.diver && danger < 1.5 * sz && d < R + (2.5 + cs * 0.25) * sz) {
           // too close: dive sideways out of the crate's path
           const px = -cv.z, pz = cv.x, side = (px * dx + pz * dz) >= 0 ? 1 : -1, pl = Math.hypot(px, pz) || 1;
@@ -551,17 +616,33 @@ function updateWorkers(dt) {
           w.h = Math.atan2(w.v.x, w.v.z); yell('dive', w.p.x, w.p.z); break;
         }
         if (danger < notice) {
-          if (w.mode === 'walk') {
+          if (w.mode === 'walk' || w.mode === 'chat' || w.mode === 'return' || w.mode === 'follow') {
             // most leg it; the odd one just freezes and covers their head
             w.mode = Math.random() < 0.2 ? 'cower' : 'flee'; w.t = 0;
             if (Math.random() < 0.5) yell('shout', w.p.x, w.p.z);
           }
         } else if (w.mode === 'flee' && w.t > 0.8) {
           // out of danger: some stop and cower for a moment before going back to work
-          if (Math.random() < 0.45) { w.mode = 'cower'; w.t = 0; w.cowerFor = 1 + Math.random() * 1.5; } else { w.mode = 'walk'; w.t = 0; }
-        } else if (w.mode === 'cower' && w.t > (w.cowerFor || 1.2)) { w.mode = 'walk'; w.t = 0; }
+          if (Math.random() < 0.45) { w.mode = 'cower'; w.t = 0; w.cowerFor = 1 + Math.random() * 1.5; } else resume(w);
+        } else if (w.mode === 'cower' && w.t > (w.cowerFor || 1.2)) resume(w);
         let mx = 0, mz = 0, sp = 0;
-        if (w.mode === 'walk') {
+        if (w.mode === 'chat') {
+          // stand and natter: face the group, the odd gesture
+          let dA = w.face - w.h; dA = Math.atan2(Math.sin(dA), Math.cos(dA)); w.h += dA * Math.min(1, tt * 6);
+          w.talkT -= tt; if (w.talkT < -1.2) w.talkT = 1.5 + Math.random() * 4;
+          w.pitch *= 0.8; w.roll *= 0.8; break;
+        } else if (w.mode === 'return' || w.mode === 'follow') {
+          let tx, tz;
+          if (w.mode === 'return') { tx = w.home.x; tz = w.home.z; }
+          else {
+            const Ld = w.leader, c = Math.cos(Ld.h), sn = Math.sin(Ld.h), ox = w.slot[0] * P.peopleSize, oz = w.slot[1] * P.peopleSize;
+            tx = Ld.p.x + ox * c + oz * sn; tz = Ld.p.z - ox * sn + oz * c;
+          }
+          const ex = tx - w.p.x, ez = tz - w.p.z, el = Math.hypot(ex, ez);
+          if (w.mode === 'return' && el < 0.4 * sz) { w.mode = 'chat'; w.t = 0; break; }
+          if (el > 0.35 * sz) { mx = ex / el; mz = ez / el; sp = Math.min(2 * sz, el * 2); }
+          else if (w.mode === 'follow') { let dA = w.leader.h - w.h; dA = Math.atan2(Math.sin(dA), Math.cos(dA)); w.h += dA * Math.min(1, tt * 4); }
+        } else if (w.mode === 'walk') {
           if (w.pause > 0) { w.pause -= tt; break; }
           laneTarget(w, _wt);
           const tx = _wt.x - w.p.x, tz = _wt.z - w.p.z, tl = Math.hypot(tx, tz);
@@ -570,7 +651,8 @@ function updateWorkers(dt) {
             if (Math.random() < 0.15) w.pause = 1 + Math.random() * 3;
             break;
           }
-          mx = tx / tl; mz = tz / tl; sp = 1.5 * sz;
+          mx = tx / tl; mz = tz / tl; sp = 1.5 * sz * (w.speed || 1);
+          if (w.kind === 'boss' && Math.random() < 0.004) w.pause = 2.5 + Math.random() * 3;   // stops to point things out
         } else if (w.mode === 'flee') {
           // run away from the crate, veering out of its line of travel
           let fx = dx / d, fz = dz / d;
@@ -611,7 +693,7 @@ function updateWorkers(dt) {
       case 'down': if (w.t > (w.downFor || 1)) { w.mode = 'getup'; w.t = 0; } break;
       case 'getup':
         w.pitch = -1.45 * Math.max(0, 1 - w.t / 0.45);
-        if (w.t > 0.5) { w.mode = 'walk'; w.t = 0; w.pitch = 0; laneTarget(w, _wt); }
+        if (w.t > 0.5) { w.pitch = 0; resume(w); }
         break;
     }
   }
@@ -631,7 +713,15 @@ function drawWorkers() {
     _wm.compose(_wp.copy(w.p), _wq, _wsc.set(sz, sz, sz));
     const ph = w.phase, T = fmT * 1.7 + i;
     let lL = 0, lR = 0, aL = 0, aR = 0, az = 0.08, bob = 0;
-    if (w.mode === 'walk') { if (w.pause <= 0) { lL = Math.sin(ph) * 0.6; lR = -lL; aL = -lL * 0.8; aR = -aL; } }
+    if (w.mode === 'walk' || w.mode === 'return' || (w.mode === 'follow' && w.phase !== w.lastPhase)) {
+      if (w.pause <= 0 || w.mode !== 'walk') { lL = Math.sin(ph) * 0.6; lR = -lL; aL = -lL * 0.8; aR = -aL; }
+      else if (w.kind === 'boss') { aR = -1.55; az = 0.05; }                    // pointing at something
+      w.lastPhase = w.phase;
+    }
+    else if (w.mode === 'chat') {
+      if (w.talkT < 0) { aR = -0.9 - Math.abs(Math.sin(T * 6)) * 0.5; aL = -0.3; }   // talking with their hands
+      bob = Math.sin(T * 2 + i) * 0.02;
+    }
     else if (w.mode === 'flee') { lL = Math.sin(ph) * 1.0; lR = -lL; aL = -2.7 + Math.sin(T * 25) * 0.6; aR = -2.7 - Math.sin(T * 25) * 0.6; az = 0.4; bob = Math.abs(Math.sin(ph)) * 0.15; }
     else if (w.mode === 'cower') { lL = lR = 0.5; aL = aR = -2.9; az = 0.7; bob = -0.2 + Math.sin(T * 30) * 0.03; }
     else if (w.mode === 'dive') { lL = 0.4; lR = 0.2; aL = aR = -3.0; az = 0.2; }
@@ -644,7 +734,7 @@ function drawWorkers() {
     part(wMesh.arm, i * 2, -0.45, 1.56 + bob, 0, aL, -az);
     part(wMesh.arm, i * 2 + 1, 0.45, 1.56 + bob, 0, aR, az);
     part(wMesh.head, i, 0, 1.83 + bob, 0, 0, 0);
-    part(wMesh.hat, i, 0, 1.88 + bob, 0, 0, 0);
+    if (w.look.hat == null) { _wr.makeScale(0, 0, 0); wMesh.hat.setMatrixAt(i, _wr); } else part(wMesh.hat, i, 0, 1.88 + bob, 0, 0, 0);
   });
   for (const k in wMesh) wMesh[k].instanceMatrix.needsUpdate = true;
 }
@@ -733,7 +823,9 @@ function updateTrucks(dt, rdt) {
     // give way to workers just ahead
     const fx = Math.sin(tk.h), fz = Math.cos(tk.h);
     let blocked = false;
-    for (const w of workers) { const ex = w.p.x - tk.x, ez = w.p.z - tk.z; if (ex * ex + ez * ez < (5 * ts) ** 2 && (ex * fx + ez * fz) > 0) { blocked = true; break; } }
+    tk.wait = tk.wait || 0; tk.ignore = Math.max(0, (tk.ignore || 0) - dt);
+    if (!tk.ignore) for (const w of workers) { const ex = w.p.x - tk.x, ez = w.p.z - tk.z, ahead = ex * fx + ez * fz, side = Math.abs(ex * fz - ez * fx); if (ahead > 0 && ahead < 6 * ts && side < 1.8 * ts) { blocked = true; break; } }
+    if (blocked) { tk.wait += dt; if (tk.wait > 3) { tk.ignore = 4; tk.wait = 0; } } else tk.wait = 0;
     // about to drive into containers: back up with the wheels turned the other way (a three-point turn)
     if (tk.rev <= 0 && topAt(tk.x + fx * 3.2 * ts, tk.z + fz * 3.2 * ts) > 0.5) tk.rev = 1.2;
     let vT;
@@ -767,6 +859,559 @@ function wreckTruck(tk, cv, nx, nz) {
   yell('hit', tk.g.position.x, tk.g.position.z);
 }
 
+// ---------------- the harbour: water, quay wall, ships and ship-to-shore cranes ----------------
+const harbour = new THREE.Group(); scene.add(harbour);
+const waterMat = new THREE.MeshLambertMaterial({ color: 0x2c5a73, emissive: 0x06141c });
+const concreteMat = new THREE.MeshLambertMaterial({ color: 0xb9b5ac });
+const hullMat = [new THREE.MeshLambertMaterial({ color: 0x2b3440 }), new THREE.MeshLambertMaterial({ color: 0x7a2323 }), new THREE.MeshLambertMaterial({ color: 0x1f4a6e })];
+const stsMat = new THREE.MeshLambertMaterial({ color: 0x2f6fbf });
+let blockList = [];
+function buildHarbour() {
+  harbour.clear();
+  if (!quay.on) return;
+  const cs = P.cscale, dir = new THREE.Vector3(Math.cos(quay.a), 0, Math.sin(quay.a)), side = new THREE.Vector3(-dir.z, 0, dir.x);
+  const at = (along, across, y) => new THREE.Vector3().addScaledVector(dir, along).addScaledVector(side, across).setY(y || 0);
+  const W = RMAX * 14;
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(W, W), waterMat);
+  water.rotation.order = 'YXZ'; water.rotation.set(-Math.PI / 2, -quay.a, 0);
+  water.position.copy(at(quay.d + W / 2, 0, 0.3)); water.receiveShadow = true; harbour.add(water);
+  const wall = new THREE.Mesh(new THREE.BoxGeometry(4 * cs, 3 * cs, W), concreteMat);
+  wall.position.copy(at(quay.d, 0, 1.2 * cs)); wall.rotation.y = -quay.a; wall.receiveShadow = true; harbour.add(wall);
+  // two ships moored alongside, loaded with containers
+  const deck = [];
+  for (const [off, len] of [[-RMAX * 0.35, 300 * cs], [RMAX * 0.45, 240 * cs]]) {
+    const beam = 42 * cs, hullH = 14 * cs, hy = hullH / 2 - 4 * cs;
+    const hull = new THREE.Mesh(new THREE.BoxGeometry(beam, hullH, len), hullMat[Math.floor(Math.random() * hullMat.length)]);
+    const c = at(quay.d + beam / 2 + 8 * cs, off, hy); hull.position.copy(c); hull.rotation.y = -quay.a; hull.castShadow = true; harbour.add(hull);
+    const bridge = new THREE.Mesh(new THREE.BoxGeometry(beam * 0.8, 22 * cs, 14 * cs), concreteMat);
+    bridge.position.copy(at(quay.d + beam / 2 + 8 * cs, off - len * 0.4, hy + hullH / 2 + 11 * cs)); bridge.rotation.y = -quay.a; bridge.castShadow = true; harbour.add(bridge);
+    // container bays on deck, aligned to the ship
+    const nAcross = Math.floor(beam * 0.85 / (2.6 * cs)), nAlong = Math.floor(len * 0.7 / (6.4 * cs));
+    for (let i = 0; i < nAlong; i++) for (let j = 0; j < nAcross; j++) {
+      const n = 2 + Math.floor(Math.random() * 5);
+      const pos = at(quay.d + 8 * cs + beam * 0.075 + (j + 0.5) * 2.6 * cs, off - len * 0.3 + (i + 0.5) * 6.4 * cs, hy + hullH / 2);
+      deck.push({ pos, n });
+    }
+  }
+  if (deck.length) {
+    const im = new THREE.InstancedMesh(unitBox, contMat, deck.length), m = new THREE.Matrix4(), q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, -quay.a + Math.PI / 2, 0));
+    deck.forEach((d, i) => { m.compose(new THREE.Vector3(d.pos.x, d.pos.y + d.n * CH / 2, d.pos.z), q, new THREE.Vector3(CW, d.n * CH, CD)); im.setMatrixAt(i, m); });
+    im.castShadow = true; harbour.add(im);
+  }
+  // ship-to-shore cranes along the quay
+  for (let k = -2; k <= 2; k++) {
+    const g = new THREE.Group(), h = 55 * cs, reach = 70 * cs, gauge = 20 * cs;
+    const leg = new THREE.BoxGeometry(2 * cs, h, 2 * cs);
+    for (const [x, z] of [[-gauge / 2, -8 * cs], [gauge / 2, -8 * cs], [-gauge / 2, 8 * cs], [gauge / 2, 8 * cs]]) { const l = new THREE.Mesh(leg, stsMat); l.position.set(x, h / 2, z); g.add(l); }
+    const boom = new THREE.Mesh(new THREE.BoxGeometry(reach + gauge + 30 * cs, 3 * cs, 3 * cs), stsMat); boom.position.set((reach - 30 * cs) / 2, h + 2 * cs, 0); g.add(boom);
+    const mach = new THREE.Mesh(new THREE.BoxGeometry(12 * cs, 6 * cs, 10 * cs), concreteMat); mach.position.set(-gauge / 2 - 4 * cs, h + 5 * cs, 0); g.add(mach);
+    g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+    g.position.copy(at(quay.d - 6 * cs, k * RMAX * 0.3, 0)); g.rotation.y = -quay.a;
+    harbour.add(g);
+  }
+}
+
+// ---------------- yard furniture: gantry cranes, light towers and clutter ----------------
+// Light towers and clutter are static until hit, then become physics bodies. Gantry cranes trundle along their block.
+let props = [], rtgs = [], propsWrecked = 0;
+const lampMat = new THREE.MeshLambertMaterial({ color: 0xfff2c0, emissive: 0x6a5a20 });
+const poleMat = new THREE.MeshLambertMaterial({ color: 0x9aa3ab });
+const rtgMat = new THREE.MeshLambertMaterial({ color: 0xf2b705 });
+const clutterMat = { drum: [0x2f6fbf, 0xc0392b, 0x2e8b57].map(c => new THREE.MeshLambertMaterial({ color: c })),
+  cone: new THREE.MeshLambertMaterial({ color: 0xff6a00 }), pallet: new THREE.MeshLambertMaterial({ color: 0xa87b4f }), sack: new THREE.MeshLambertMaterial({ color: 0xd8cfb8 }) };
+const furniture = new THREE.Group(); scene.add(furniture);
+function addProp(g, x, z, yaw, he, mass, cost) {
+  g.position.set(x, 0, z); g.rotation.y = yaw; furniture.add(g);
+  g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  props.push({ g, x, z, yaw, he, mass, cost, body: null });
+}
+function buildFurniture() {
+  furniture.clear(); props = []; rtgs = []; propsWrecked = 0;
+  const cs = P.cscale, ps = P.peopleSize;
+  // light towers at the corners of junctions
+  const nodes = walkNodes.slice().sort(() => Math.random() - 0.5);
+  for (let i = 0; i < Math.min(P.lights, nodes.length); i++) {
+    const n = nodes[i], h = 26 * cs, g = new THREE.Group();
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.35 * cs, 0.6 * cs, h, 8), poleMat); pole.position.y = h / 2; g.add(pole);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(4 * cs, 1.4 * cs, 1.4 * cs), lampMat); head.position.y = h; g.add(head);
+    const ox = (Math.random() < 0.5 ? -1 : 1) * laneHalf * 0.9, oz = (Math.random() < 0.5 ? -1 : 1) * laneHalf * 0.9;
+    if (topAt(n.x + ox, n.z + oz) > 0) continue;
+    addProp(g, n.x + ox, n.z + oz, Math.random() * 6.28, [0.6 * cs, h / 2, 0.6 * cs], 3, 300);
+  }
+  // clutter: little clusters of drums, cones and pallets tucked against the ends of blocks
+  const clusters = Math.round(P.clutter * Math.min(14, walkNodes.length * 0.25));
+  for (let c = 0; c < clusters; c++) {
+    const n = walkNodes[Math.floor(Math.random() * walkNodes.length)];
+    const bx = n.x + (Math.random() * 2 - 1) * laneHalf * 0.9, bz = n.z + (Math.random() * 2 - 1) * laneHalf * 0.9;
+    const kind = ['drum', 'cone', 'pallet'][Math.floor(Math.random() * 3)], count = kind === 'pallet' ? 2 : 3 + Math.floor(Math.random() * 4);
+    for (let k = 0; k < count; k++) {
+      const x = bx + (Math.random() - 0.5) * 3 * ps, z = bz + (Math.random() - 0.5) * 3 * ps;
+      if (topAt(x, z) > 0) continue;
+      const g = new THREE.Group();
+      if (kind === 'drum') { const m = new THREE.Mesh(new THREE.CylinderGeometry(0.3 * ps, 0.3 * ps, 0.9 * ps, 10), clutterMat.drum[Math.floor(Math.random() * 3)]); m.position.y = 0.45 * ps; g.add(m); addProp(g, x, z, 0, [0.3 * ps, 0.45 * ps, 0.3 * ps], 0.15, 10); }
+      else if (kind === 'cone') { const m = new THREE.Mesh(new THREE.ConeGeometry(0.22 * ps, 0.7 * ps, 8), clutterMat.cone); m.position.y = 0.35 * ps; g.add(m); addProp(g, x, z, 0, [0.22 * ps, 0.35 * ps, 0.22 * ps], 0.05, 2); }
+      else { const m = new THREE.Mesh(new THREE.BoxGeometry(1.2 * ps, 0.15 * ps, 1 * ps), clutterMat.pallet); m.position.y = 0.075 * ps; g.add(m);
+        const sk = new THREE.Mesh(new THREE.BoxGeometry(1.1 * ps, 0.7 * ps, 0.9 * ps), clutterMat.sack); sk.position.y = 0.5 * ps; g.add(sk);
+        addProp(g, x, z, Math.random() * 6.28, [0.6 * ps, 0.45 * ps, 0.5 * ps], 0.4, 40); }
+    }
+  }
+  // rubber-tyred gantry cranes straddling a block, trundling up and down it
+  const bl = blockList.slice().sort(() => Math.random() - 0.5);
+  for (let i = 0; i < Math.min(P.rtgs, bl.length); i++) {
+    const b = bl[i], g = new THREE.Group(), h = (P.stackMax + 2.5) * CH, legW = 1.4 * cs, depth = 1.3 * CW;
+    const za = b.z0 - 2.5 * cs, zb = b.z1 + 2.5 * cs, span = zb - za;
+    const legGeo = new THREE.BoxGeometry(legW, h, legW);
+    for (const [x, z] of [[-depth / 2, 0], [depth / 2, 0], [-depth / 2, span], [depth / 2, span]]) { const l = new THREE.Mesh(legGeo, rtgMat); l.position.set(x, h / 2, z); g.add(l); }
+    for (const x of [-depth / 2, depth / 2]) { const gd = new THREE.Mesh(new THREE.BoxGeometry(legW, 2 * cs, span + legW), rtgMat); gd.position.set(x, h, span / 2); g.add(gd); }
+    for (const z of [0, span]) { const sill = new THREE.Mesh(new THREE.BoxGeometry(depth + legW, 1 * cs, legW * 1.4), rtgMat); sill.position.set(0, 0.8 * cs, z); g.add(sill); }
+    const trolleyM = new THREE.Mesh(new THREE.BoxGeometry(depth * 0.8, 2.5 * cs, 4 * cs), rtgMat); trolleyM.position.set(0, h + 0.5 * cs, span * 0.5); g.add(trolleyM);
+    const cable = new THREE.Mesh(new THREE.BoxGeometry(0.15 * cs, 1, 0.15 * cs), darkMat); g.add(cable);
+    const spreader = new THREE.Mesh(new THREE.BoxGeometry(CW * 0.95, 0.5 * cs, CD * 0.9), darkMat); g.add(spreader);
+    g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    g.position.set(b.x0, 0, za); furniture.add(g);
+    rtgs.push({ g, b, za, zb, h, depth, legW, span, x: b.x0 + CW, dirx: 1, pause: 0, trolleyM, cable, spreader, tz: span * 0.5, drop: 0, dropT: Math.random() * 6 });
+  }
+}
+function updateFurniture(dt) {
+  const cs = P.cscale;
+  for (const r of rtgs) {
+    if (r.pause > 0) { r.pause -= dt; r.dropT += dt; }
+    else {
+      r.x += r.dirx * 1.6 * cs * dt;
+      if (r.x > r.b.x1 - r.depth / 2) { r.x = r.b.x1 - r.depth / 2; r.dirx = -1; r.pause = 3; }
+      if (r.x < r.b.x0 + r.depth / 2) { r.x = r.b.x0 + r.depth / 2; r.dirx = 1; r.pause = 3; }
+      if (Math.random() < dt * 0.08) r.pause = 4 + Math.random() * 4;
+    }
+    // the spreader goes down and back up while it's parked
+    const lower = r.pause > 0 ? Math.sin(Math.min(1, r.dropT / 4) * Math.PI) : 0;
+    if (r.pause <= 0) r.dropT = 0;
+    const tz = r.span * (0.2 + 0.6 * (0.5 + 0.5 * Math.sin(fmT * 0.13 + r.za)));
+    const top = r.h - 1 * cs, bottom = (P.stackMax + 0.8) * CH, sy = top - (top - bottom) * lower;
+    r.trolleyM.position.z = tz; r.spreader.position.set(0, sy, tz);
+    r.cable.position.set(0, (r.h + sy) / 2, tz); r.cable.scale.y = Math.max(0.1, r.h - sy);
+    r.g.position.x = r.x;
+  }
+  for (const pr of props) if (pr.body) {
+    const b = pr.body;
+    pr.g.position.set(b.position.x, b.position.y - pr.he[1], b.position.z);
+    pr.g.quaternion.set(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w);
+  }
+}
+// solid parts of the gantry cranes for the crate to bounce off
+function rtgBoxes(out) {
+  out.length = 0;
+  for (const r of rtgs) {
+    const x0 = r.x - r.depth / 2 - r.legW / 2, x1 = r.x + r.depth / 2 + r.legW / 2, hw = r.legW / 2;
+    for (const z of [r.za, r.zb]) {
+      out.push({ minX: x0, maxX: x0 + r.legW, minZ: z - hw, maxZ: z + hw, top: r.h, minY: 0 });
+      out.push({ minX: x1 - r.legW, maxX: x1, minZ: z - hw, maxZ: z + hw, top: r.h, minY: 0 });
+    }
+    for (const x of [x0, x1 - r.legW]) out.push({ minX: x, maxX: x + r.legW, minZ: r.za, maxZ: r.zb, top: r.h + 1 * P.cscale, minY: r.h - 1 * P.cscale });
+  }
+  return out;
+}
+const _rb = [];
+function propKnock(pr, cv) {
+  const b = new CANNON.Body({ mass: pr.mass });
+  b.addShape(new CANNON.Box(new CANNON.Vec3(pr.he[0], pr.he[1], pr.he[2])));
+  b.position.set(pr.g.position.x, pr.he[1], pr.g.position.z);
+  const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, pr.yaw, 0)); b.quaternion.set(q.x, q.y, q.z, q.w);
+  b.velocity.set(cv.x * 1.1, Math.hypot(cv.x, cv.z) * 0.25 + 1, cv.z * 1.1);
+  b.angularVelocity.set((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4);
+  b.sleepSpeedLimit = 0.3; b.sleepTimeLimit = 1;
+  b.userData = { debris: true, he: pr.he };
+  world.addBody(b); pr.body = b; propsWrecked += pr.cost;
+}
+function collideProps(h) {
+  // gantry legs and girders: solid
+  for (const bx of rtgBoxes(_rb)) sphereBoxY(bx, h);
+  // standing props: knocked flying by anything but the gentlest touch
+  for (const pr of props) {
+    if (pr.body) { sphereDebris(pr.body, h); continue; }
+    const dx = lp.x - pr.g.position.x, dz = lp.z - pr.g.position.z, rad = Math.max(pr.he[0], pr.he[2]);
+    if (dx * dx + dz * dz > (R + rad) ** 2 || lp.y - R > pr.he[1] * 2) continue;
+    const cv = vel.clone().subVectors(lp, lpp).divideScalar(h);
+    propKnock(pr, cv);
+  }
+}
+// a box that doesn't reach the ground (girders): same as sphereBox but with a bottom
+function sphereBoxY(s, h) {
+  const cx = clamp(lp.x, s.minX, s.maxX), cy = clamp(lp.y, s.minY || 0, s.top), cz = clamp(lp.z, s.minZ, s.maxZ);
+  n.set(lp.x - cx, lp.y - cy, lp.z - cz);
+  const d = n.length();
+  if (d >= R || d < 1e-6) return;
+  n.divideScalar(d); lp.addScaledVector(n, R - d);
+  vel.subVectors(lp, lpp);
+  const vn = vel.dot(n); if (vn >= 0) return;
+  tmp.copy(n).multiplyScalar(vn); vel.sub(tmp).multiplyScalar(0.92); vel.addScaledVector(n, -vn * 0.3);
+  impact(-vn / h);
+  lpp.subVectors(lp, vel);
+}
+function resetFurniture() {
+  for (const pr of props) if (pr.body) { world.removeBody(pr.body); pr.body = null; pr.g.position.set(pr.x, 0, pr.z); pr.g.rotation.set(0, pr.yaw, 0); }
+  propsWrecked = 0;
+}
+
+// ---------------- reach stackers: they actually move containers around the yard ----------------
+// Each one picks a container off the end of a stack, reverses out, drives the aisles, and sets it down on another stack.
+let movers = [];
+const moverMat = { body: new THREE.MeshLambertMaterial({ color: 0xd9582b }), boom: new THREE.MeshLambertMaterial({ color: 0xe8e2d4 }),
+  cab: new THREE.MeshLambertMaterial({ color: 0x223344, emissive: 0x0a1016 }) };
+function makeStacker() {
+  const g = new THREE.Group();
+  const chassis = new THREE.Mesh(new THREE.BoxGeometry(3, 1.5, 7), moverMat.body); chassis.position.set(0, 1.35, 0); g.add(chassis);
+  const cw = new THREE.Mesh(new THREE.BoxGeometry(3, 1.6, 1.6), moverMat.body); cw.position.set(0, 2.6, -3); g.add(cw);
+  const cab = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.8, 1.8), moverMat.cab); cab.position.set(-0.6, 3, -0.6); g.add(cab);
+  const boom = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 7.5), moverMat.boom); boom.position.set(0.6, 3.6, 0.8); g.add(boom);
+  const front = [];
+  for (const [x, z] of [[-1.4, 2.2], [1.4, 2.2], [-1.4, -2.4], [1.4, -2.4]]) {
+    const w = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.75, 0.6, 10).rotateZ(Math.PI / 2), truckMat.tyre); w.position.set(x, 0.75, z); g.add(w); if (z < 0) front.push(w);
+  }
+  const beaconMat = new THREE.MeshBasicMaterial({ color: 0xff8a00 });
+  const bc = new THREE.Mesh(truckGeo.beacon, beaconMat); bc.position.set(-0.6, 4.1, -0.6); g.add(bc);
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  g.userData.boom = boom;
+  return { g, beaconMat, front };
+}
+const carryMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+function spawnMovers() {
+  for (const m of movers) { scene.remove(m.g); scene.remove(m.cm); if (m.body) world.removeBody(m.body); }
+  movers = [];
+  if (!walkNodes.length) return;
+  for (let i = 0; i < P.stackers; i++) {
+    const { g, beaconMat, front } = makeStacker(); scene.add(g);
+    const cm = new THREE.Mesh(new THREE.BoxGeometry(CW, CH, CD), carryMat.clone()); cm.visible = false; cm.castShadow = true; scene.add(cm);
+    const m = { g, beaconMat, front, cm, phase: Math.random() * 6, body: null, wreckT: 0 };
+    placeMover(m); movers.push(m);
+  }
+}
+function placeMover(m) {
+  const n = walkNodes[Math.floor(Math.random() * walkNodes.length)];
+  m.x = n.x; m.z = n.z; m.h = Math.random() * 6.28; m.v = 0; m.steer = 0; m.wps = []; m.job = null; m.state = 'idle'; m.t = Math.random() * 3;
+  m.carry = false; m.cm.visible = false; m.g.scale.setScalar(P.peopleSize); m.g.rotation.set(0, m.h, 0);
+  for (const fw of m.front) fw.rotation.y = 0;
+}
+// is there a clear aisle beside this stack in direction (dx, dz)? returns where the stacker should stop
+function stackFace(b, dx, dz) {
+  if (b.dead) return null;
+  const vs = P.peopleSize, cx = (b.minX + b.maxX) / 2, cz = (b.minZ + b.maxZ) / 2;
+  const halfAlong = dx ? CW / 2 : CD / 2, reach = 4.4 * vs + halfAlong;
+  const sx = cx + dx * reach, sz = cz + dz * reach;
+  for (let k = 0.4; k <= 3; k += 0.4) { const x = cx + dx * (halfAlong + k * reach / 2), z = cz + dz * (halfAlong + k * reach / 2); if (topAt(x, z) > 0 || beyondQuay(x, z, 10)) return null; }
+  const r = Math.hypot(sx, sz);
+  if (r < RMIN + 8 * vs || r > RMAX * 1.05) return null;
+  return { sx, sz, dx, dz, pre: { x: cx + dx * reach * 2.4, z: cz + dz * reach * 2.4 }, heading: Math.atan2(-dx, -dz) };
+}
+function findFace(filter) {
+  for (let tries = 0; tries < 60; tries++) {
+    const b = boxes[Math.floor(Math.random() * boxes.length)];
+    if (!b || b.dead || !filter(b)) continue;
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]].sort(() => Math.random() - 0.5);
+    for (const [dx, dz] of dirs) { const f = stackFace(b, dx, dz); if (f) return { b, f }; }
+  }
+  return null;
+}
+function nearestWalk(x, z) { let bi = 0, bd = Infinity; walkNodes.forEach((n, i) => { const d = (n.x - x) ** 2 + (n.z - z) ** 2; if (d < bd) { bd = d; bi = i; } }); return bi; }
+function walkRoute(a, b) {
+  const prev = new Map([[a, -1]]), q = [a];
+  while (q.length) { const c = q.shift(); if (c === b) break; for (const n of walkAdj[c]) if (!prev.has(n)) { prev.set(n, c); q.push(n); } }
+  if (!prev.has(b)) return [a];
+  const out = []; for (let c = b; c !== -1; c = prev.get(c)) out.unshift(c); return out;
+}
+function routeTo(m, face) {
+  const a = nearestWalk(m.x, m.z), b = nearestWalk(face.pre.x, face.pre.z);
+  m.wps = walkRoute(a, b).map(i => ({ x: walkNodes[i].x, z: walkNodes[i].z }));
+  m.wps.push({ x: face.pre.x, z: face.pre.z }, { x: face.sx, z: face.sz, final: true });
+}
+function steerTo(m, dt, vmax) {
+  const vs = P.peopleSize, wb = 3.6 * vs, maxSteer = 0.9;             // rear-steered: turns tight
+  const Ld = Math.max(5 * vs, Math.abs(m.v) * 1.2);
+  while (m.wps.length > 1 && Math.hypot(m.wps[0].x - m.x, m.wps[0].z - m.z) < Ld * 0.7) m.wps.shift();
+  let tgt = m.wps[m.wps.length - 1];
+  for (const wp of m.wps) if (Math.hypot(wp.x - m.x, wp.z - m.z) >= Ld) { tgt = wp; break; }
+  let alpha = Math.atan2(tgt.x - m.x, tgt.z - m.z) - m.h; alpha = Math.atan2(Math.sin(alpha), Math.cos(alpha));
+  let steerT = clamp(Math.atan2(2 * wb * Math.sin(alpha), Ld), -maxSteer, maxSteer);
+  const last = m.wps[m.wps.length - 1], dl = Math.hypot(last.x - m.x, last.z - m.z);
+  // target is off to the side and too close to turn onto: back up and have another go
+  if (!m.rev && Math.abs(alpha) > 1.1 && dl < wb / Math.tan(maxSteer) * 2.2) m.rev = 1.4;
+  if (m.rev > 0) {
+    m.rev = Math.max(0, m.rev - dt);
+    const st = -Math.sign(alpha) * maxSteer;
+    m.steer += clamp(st - m.steer, -2.5 * dt, 2.5 * dt);
+    m.v += clamp(-2 * vs - m.v, -4 * vs * dt, 4 * vs * dt);
+    m.h += m.v / wb * Math.tan(m.steer) * dt;
+    m.x += Math.sin(m.h) * m.v * dt; m.z += Math.cos(m.h) * m.v * dt;
+    return false;
+  }
+  let vT = vmax * clamp(1 - Math.abs(alpha) / 1.4, 0.25, 1);
+  if (last.final && m.wps.length <= 2) vT = Math.min(vT, dl * 0.8 + 0.3 * vs);
+  const fx = Math.sin(m.h), fz = Math.cos(m.h);
+  // give way to anyone actually in the path, but not forever
+  m.wait = m.wait || 0; m.ignore = Math.max(0, (m.ignore || 0) - dt);
+  let blocked = false;
+  if (!m.ignore) for (const w of workers) { const ex = w.p.x - m.x, ez = w.p.z - m.z, ahead = ex * fx + ez * fz, side = Math.abs(ex * fz - ez * fx); if (ahead > 0 && ahead < 7 * vs && side < 2.2 * vs) { blocked = true; break; } }
+  if (blocked) { vT = 0; m.wait += dt; if (m.wait > 3) { m.ignore = 4; m.wait = 0; } } else m.wait = 0;
+  m.steer += clamp(steerT - m.steer, -2 * dt, 2 * dt);
+  m.v += clamp(vT - m.v, -4 * vs * dt, 2 * vs * dt);
+  m.h += m.v / wb * Math.tan(m.steer) * dt;
+  m.x += Math.sin(m.h) * m.v * dt; m.z += Math.cos(m.h) * m.v * dt;
+  return last.final && dl < 1.5 * vs && m.wps.length <= 1;
+}
+const _cc = new THREE.Color();
+function updateMovers(dt) {
+  const vs = P.peopleSize, TW = 1.5, cv = vel.clone().subVectors(lp, lpp).divideScalar(H);
+  for (const m of movers) {
+    m.beaconMat.color.setHex(Math.sin(fmT * 9 + m.phase) > 0.2 ? 0xffa21a : 0x5a2a00);
+    if (m.body) {
+      const b = m.body;
+      m.g.position.set(b.position.x, b.position.y - 1.4 * vs, b.position.z);
+      m.g.quaternion.set(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w);
+      m.wreckT += dt;
+      if (m.wreckT > 8 && b.sleepState === CANNON.Body.SLEEPING) { world.removeBody(b); m.body = null; placeMover(m); }
+      continue;
+    }
+    const tt = dt * TW;
+    m.t -= tt;
+    const fx = Math.sin(m.h), fz = Math.cos(m.h);
+    switch (m.state) {
+      case 'idle':
+        m.v *= 0.9;
+        if (m.t <= 0) {
+          const near = (b, d) => Math.hypot((b.minX + b.maxX) / 2 - m.x, (b.minZ + b.maxZ) / 2 - m.z) < d;
+          const src = findFace(b => b.n >= 2 && !b.bouncy && near(b, RMAX * 0.35)) || findFace(b => b.n >= 2 && !b.bouncy);
+          if (!src) { m.t = 3; break; }
+          m.job = { src }; routeTo(m, src.f); m.state = 'toPick';
+        }
+        break;
+      case 'toPick':
+        if (m.job.src.b.dead || m.job.src.b.n < 2) { m.state = 'idle'; m.t = 1; break; }
+        if (steerTo(m, tt, 5 * vs)) { m.state = 'lift'; m.t = 2.4; m.v = 0; }
+        break;
+      case 'lift': {
+        const b = m.job.src.b;
+        { let dA = m.job.src.f.heading - m.h; dA = Math.atan2(Math.sin(dA), Math.cos(dA)); m.h += dA * Math.min(1, tt * 3); }
+        if (!m.carry && m.t < 1.4) {
+          if (b.dead || b.n < 2) { m.state = 'idle'; m.t = 1; break; }
+          b.n -= 1; b.top = b.n * CH; setBoxMatrix(b, false); mapDirty = true;
+          m.carry = true; m.cm.visible = true;
+          m.cm.material.color.copy(containerColour(b.ix, b.iz, b.n, _cc));
+          m.carryYaw0 = 0; m.h0 = m.h; m.liftFrom = (b.n + 0.5) * CH;
+        }
+        if (m.t <= 0) { m.state = 'backout'; m.t = 1.6; }
+        break;
+      }
+      case 'backout':
+        m.v += clamp(-2 * vs - m.v, -3 * vs * tt, 3 * vs * tt); m.steer *= 0.9;
+        m.x += fx * m.v * tt; m.z += fz * m.v * tt;
+        if (m.t <= 0) {
+          if (m.carry) {
+            const ok = b => b.n >= 1 && b.n <= P.stackMax && b !== m.job.src.b && !b.bouncy, close = b => Math.hypot((b.minX + b.maxX) / 2 - m.x, (b.minZ + b.maxZ) / 2 - m.z) < RMAX * 0.3;
+            const dst = findFace(b => ok(b) && close(b)) || findFace(ok);
+            if (!dst) { m.t = 1; break; }
+            m.job.dst = dst; routeTo(m, dst.f); m.state = 'toDrop';
+          } else { m.state = 'idle'; m.t = 2 + Math.random() * 4; }
+        }
+        break;
+      case 'toDrop':
+        if (m.job.dst.b.dead || m.job.dst.b.n > P.stackMax) { const d2 = findFace(b => b.n >= 1 && b.n <= P.stackMax && !b.bouncy); if (!d2) break; m.job.dst = d2; routeTo(m, d2.f); }
+        if (steerTo(m, tt, 4 * vs)) { m.state = 'place'; m.t = 2.4; m.v = 0; }
+        break;
+      case 'place': {
+        const b = m.job.dst.b;
+        { let dA = m.job.dst.f.heading - m.h; dA = Math.atan2(Math.sin(dA), Math.cos(dA)); m.h += dA * Math.min(1, tt * 3); }
+        if (m.carry && m.t < 1) {
+          if (!b.dead) { b.n += 1; b.top = b.n * CH; setBoxMatrix(b, false); mapDirty = true; }
+          m.carry = false; m.cm.visible = false;
+        }
+        if (m.t <= 0) { m.state = 'backout'; m.t = 1.6; }
+        break;
+      }
+    }
+    m.g.position.set(m.x, 0, m.z); m.g.rotation.set(0, m.h, 0);
+    for (const fw of m.front) fw.rotation.y = -m.steer;          // rear-wheel steer, like the real thing
+    // the container sits in front of the boom: lifted up to its stack height, carried low
+    if (m.carry) {
+      const reach = 4.4 * vs + (Math.abs(fx) > Math.abs(fz) ? CW / 2 : CD / 2);
+      let y = 1.2 * CH;
+      if (m.state === 'lift') y = m.liftFrom + (1 - m.t / 1.4) * 0.3;
+      if (m.state === 'place') y = (m.job.dst.b.n + 0.5) * CH + Math.max(0, m.t - 1) * 0.3;
+      m.cm.position.set(m.x + fx * reach, y, m.z + fz * reach);
+      m.cm.rotation.set(0, m.carryYaw0 + (m.h - m.h0), 0);
+      m.g.userData.boom.rotation.x = -clamp((y - 3.6 * vs) / (6 * vs), -0.2, 0.6);
+    } else m.g.userData.boom.rotation.x = 0;
+    // clipped by the crate
+    const hx = m.x - lp.x, hz = m.z - lp.z, hd = Math.hypot(hx, hz) || 0.01;
+    if (hd < R + 3 * vs && lp.y - R < 4 * vs && Math.hypot(cv.x, cv.y, cv.z) > 1.5) wreckMover(m, cv, hx / hd, hz / hd);
+  }
+}
+function wreckMover(m, cv, nx, nz) {
+  const vs = P.peopleSize, he = [1.5 * vs, 1.4 * vs, 3.6 * vs];
+  const body = new CANNON.Body({ mass: 3 });
+  body.addShape(new CANNON.Box(new CANNON.Vec3(he[0], he[1], he[2])));
+  body.position.set(m.x, 1.4 * vs, m.z);
+  const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, m.h, 0)); body.quaternion.set(q.x, q.y, q.z, q.w);
+  body.velocity.set(cv.x * 0.8 + nx * 3, 3 + Math.hypot(cv.x, cv.z) * 0.2, cv.z * 0.8 + nz * 3);
+  body.angularVelocity.set((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 4);
+  body.sleepSpeedLimit = 0.4; body.sleepTimeLimit = 1; body.userData = { debris: true, he };
+  world.addBody(body); m.body = body; m.wreckT = 0; trucksWrecked++;
+  if (m.carry) { dropCarried(m, cv); }
+  m.state = 'idle'; m.job = null;
+  yell('hit', m.x, m.z);
+}
+// the carried container goes flying as a loose physics container
+function dropCarried(m, cv) {
+  m.carry = false; m.cm.visible = false;
+  if (debris.length >= DEBRIS_CAP) return;
+  const p = m.cm.position, body = new CANNON.Body({ mass: 1 });
+  body.addShape(new CANNON.Box(new CANNON.Vec3(CW / 2 * 0.98, CH / 2 * 0.98, CD / 2 * 0.98)));
+  body.position.set(p.x, Math.max(CH / 2, p.y), p.z);
+  const q = new THREE.Quaternion().setFromEuler(m.cm.rotation); body.quaternion.set(q.x, q.y, q.z, q.w);
+  body.velocity.set(cv.x, 2, cv.z); body.sleepSpeedLimit = 0.4; body.sleepTimeLimit = 1;
+  body.userData = { debris: true }; body.userData0 = { x: p.x, y: -99, z: p.z };
+  world.addBody(body);
+  const i = debris.length; debris.push(body);
+  debrisMesh.setColorAt(i, m.cm.material.color); debrisMesh.instanceColor.needsUpdate = true; debrisMesh.count = debris.length;
+}
+
+// ---------------- birds ----------------
+// Pigeons and gulls loafing on container tops and the ground, scattering when anything big comes near.
+// A few gulls glide high up, between the camera and the yard, for a sense of height.
+const BMAX = 80;
+const bGeo = {
+  body: new THREE.BoxGeometry(0.2, 0.18, 0.5),
+  head: new THREE.BoxGeometry(0.14, 0.14, 0.16).translate(0, 0.08, 0.3),
+  wing: new THREE.BoxGeometry(0.55, 0.03, 0.26).translate(0.275, 0, 0),
+};
+const bMesh = {
+  body: new THREE.InstancedMesh(bGeo.body, new THREE.MeshLambertMaterial({ color: 0xffffff }), BMAX),
+  head: new THREE.InstancedMesh(bGeo.head, new THREE.MeshLambertMaterial({ color: 0xffffff }), BMAX),
+  wing: new THREE.InstancedMesh(bGeo.wing, new THREE.MeshLambertMaterial({ color: 0xffffff }), BMAX * 2),
+};
+for (const k in bMesh) {
+  const m = bMesh[k]; m.count = 0; m.castShadow = true; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(m.instanceMatrix.count * 3).fill(1), 3); scene.add(m);
+}
+let birds = [];
+const _bc = new THREE.Color();
+function birdSpotNear(p, rad) {
+  for (let k = 0; k < 12; k++) { const q = birdSpot(); if (Math.hypot(q.x - p.x, q.z - p.z) < rad) return q; }
+  const a = Math.random() * 6.28, r = rad * (0.3 + Math.random() * 0.6), x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r;
+  return new THREE.Vector3(x, topAt(x, z), z);
+}
+function birdSpot() {
+  // somewhere to sit: usually a container top, sometimes an aisle
+  if (Math.random() < 0.6 && boxes.length) {
+    for (let k = 0; k < 20; k++) { const b = boxes[Math.floor(Math.random() * boxes.length)]; if (!b.dead && Math.hypot((b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2) < RMAX * 1.1) return new THREE.Vector3(b.minX + Math.random() * (b.maxX - b.minX), b.top, b.minZ + Math.random() * (b.maxZ - b.minZ)); }
+  }
+  const n = walkNodes[Math.floor(Math.random() * walkNodes.length)];
+  return new THREE.Vector3(n.x + (Math.random() - 0.5) * laneHalf * 2, 0, n.z + (Math.random() - 0.5) * laneHalf * 2);
+}
+function spawnBirds() {
+  birds = [];
+  if (!walkNodes.length) return;
+  // small flocks of 2-5
+  let left = Math.min(P.birds, BMAX - P.gulls);
+  while (left > 0) {
+    const home = birdSpot(), k = Math.min(left, 2 + Math.floor(Math.random() * 4)), gull = Math.random() < 0.4;
+    for (let i = 0; i < k; i++) {
+      const p = home.clone().add(new THREE.Vector3((Math.random() - 0.5) * 3 * P.peopleSize, 0, (Math.random() - 0.5) * 3 * P.peopleSize));
+      p.y = topAt(p.x, p.z);
+      birds.push({ gull, high: false, p, v: new THREE.Vector3(), h: Math.random() * 6.28, mode: 'sit', t: Math.random() * 5, flap: Math.random() * 6, bank: 0, peck: Math.random() * 3 });
+    }
+    left -= k;
+  }
+  for (let i = 0; i < Math.min(P.gulls, BMAX); i++) {
+    const a = Math.random() * 6.28, r = RMAX * (0.3 + Math.random() * 0.7);
+    birds.push({ gull: true, high: true, p: new THREE.Vector3(Math.cos(a) * r, HOOK_Y * (0.3 + Math.random() * 0.35), Math.sin(a) * r), v: new THREE.Vector3(),
+      h: Math.random() * 6.28, mode: 'glide', t: 0, flap: Math.random() * 6, bank: 0, turn: (Math.random() < 0.5 ? -1 : 1) * (0.08 + Math.random() * 0.12), cx: Math.cos(a) * r, cz: Math.sin(a) * r });
+  }
+  birds.forEach((b, i) => {
+    const body = b.gull ? 0xf4f4f2 : [0x8a8f98, 0x6f747c, 0x9a9590][i % 3], wing = b.gull ? 0xaab2ba : body * 1;
+    bMesh.body.setColorAt(i, _bc.set(body)); bMesh.head.setColorAt(i, _bc.set(b.gull ? 0xffffff : 0x5c6068));
+    bMesh.wing.setColorAt(i * 2, _bc.set(wing)); bMesh.wing.setColorAt(i * 2 + 1, _bc.set(wing));
+  });
+  for (const k in bMesh) bMesh[k].instanceColor.needsUpdate = true;
+}
+function updateBirds(dt) {
+  const bs = P.peopleSize, cv = vel.clone().subVectors(lp, lpp).divideScalar(H), cs = Math.hypot(cv.x, cv.z);
+  for (const b of birds) {
+    b.t += dt;
+    if (b.high) {
+      // lazy thermalling circles, drifting around the yard
+      b.h += b.turn * dt; b.bank = -b.turn * 2.2;
+      const sp = 9 * bs;
+      b.p.x += Math.sin(b.h) * sp * dt; b.p.z += Math.cos(b.h) * sp * dt;
+      if (Math.hypot(b.p.x, b.p.z) > RMAX * 1.1 && Math.random() < dt) b.turn = Math.abs(b.turn) * Math.sign(Math.sin(b.h - Math.atan2(-b.p.x, -b.p.z)) || 1) * -1;
+      b.flap += dt * (Math.sin(b.t * 0.3) > 0.7 ? 7 : 0.3);
+      continue;
+    }
+    if (b.mode === 'sit') {
+      b.peck -= dt; if (b.peck < -0.4) b.peck = 1 + Math.random() * 3;
+      if (Math.random() < dt * 0.15) b.h += (Math.random() - 0.5) * 2;
+      // something big coming? up and away
+      const dx = b.p.x - lp.x, dz = b.p.z - lp.z, d = Math.hypot(dx, dz);
+      let spooked = d < R + 12 * bs + cs * 1.5 && Math.abs(lp.y - b.p.y) < 20 * bs;
+      if (!spooked) for (const tk of trucks) if (Math.hypot(b.p.x - tk.x, b.p.z - tk.z) < 8 * bs && b.p.y < 1) { spooked = true; break; }
+      if (!spooked) for (const m of movers) if (Math.hypot(b.p.x - m.x, b.p.z - m.z) < 10 * bs) { spooked = true; break; }
+      if (!spooked && b.p.y < 1) for (const w of workers) if (w.mode !== 'chat' && Math.hypot(b.p.x - w.p.x, b.p.z - w.p.z) < 3 * bs) { spooked = true; break; }
+      if (spooked || Math.random() < dt * 0.01) {
+        const away = Math.atan2(dx, dz) + (Math.random() - 0.5);
+        b.mode = 'fly'; b.t = 0; b.flyFor = 5 + Math.random() * 7; b.h = away;
+        b.v.set(Math.sin(away) * 6 * bs, 5 * bs, Math.cos(away) * 6 * bs);
+        b.alt = b.p.y + (10 + Math.random() * 25) * bs; b.dest = birdSpotNear(b.p, 120 + 25 * bs);
+        if (b.gull && Math.random() < 0.35) yell('gull', b.p.x, b.p.z);
+      }
+    } else {
+      // flap up to a cruising height, wheel about, then glide down to somewhere new
+      const home = b.t > b.flyFor, tx = home ? b.dest.x : b.p.x + Math.sin(b.h) * 20, tz = home ? b.dest.z : b.p.z + Math.cos(b.h) * 20;
+      const ty = home && Math.hypot(tx - b.p.x, tz - b.p.z) < 40 * bs ? b.dest.y + 0.2 : b.alt;
+      let want = Math.atan2(tx - b.p.x, tz - b.p.z), dA = want - b.h; dA = Math.atan2(Math.sin(dA), Math.cos(dA));
+      if (!home) dA += Math.sin(b.t * 0.7) * 0.6;
+      const dHome = Math.hypot(tx - b.p.x, tz - b.p.z), close = home && dHome < 30 * bs;
+      const tr = close ? 5 : 1.8, turn = clamp(dA, -tr * dt, tr * dt); b.h += turn; b.bank = -turn / dt * 0.35;
+      const sp = (b.gull ? 11 : 9) * bs * (close ? clamp(dHome / (20 * bs), 0.2, 1) : 1);
+      b.v.x += (Math.sin(b.h) * sp - b.v.x) * Math.min(1, dt * 2); b.v.z += (Math.cos(b.h) * sp - b.v.z) * Math.min(1, dt * 2);
+      b.v.y += ((ty - b.p.y) * 0.8 - b.v.y) * Math.min(1, dt * 2);
+      b.p.addScaledVector(b.v, dt);
+      b.p.y = Math.max(b.p.y, topAt(b.p.x, b.p.z));
+      b.flap += dt * (b.v.y > 0.5 || close ? 16 : 5);
+      if (home && dHome < 2.5 * bs && Math.abs(b.p.y - ty) < 3 * bs) {
+        b.mode = 'sit'; b.p.set(tx, topAt(tx, tz), tz); b.v.set(0, 0, 0); b.bank = 0;
+      }
+    }
+  }
+}
+const _bm = new THREE.Matrix4(), _bl = new THREE.Matrix4(), _br = new THREE.Matrix4(), _bq = new THREE.Quaternion(), _be = new THREE.Euler(0, 0, 0, 'YXZ'), _bsv = new THREE.Vector3();
+function drawBirds() {
+  const n = birds.length;
+  bMesh.body.count = bMesh.head.count = n; bMesh.wing.count = n * 2;
+  if (!n) return;
+  const bs = P.peopleSize;
+  birds.forEach((b, i) => {
+    const sitting = b.mode === 'sit', pitch = sitting ? (b.peck < 0 ? 0.6 : -0.1) : clamp(-b.v.y * 0.05, -0.5, 0.5);
+    _bq.setFromEuler(_be.set(pitch, b.h, b.bank, 'YXZ'));
+    _bm.compose(_bsv.set(b.p.x, b.p.y + 0.12 * bs, b.p.z), _bq, _wsc.set(bs, bs, bs));
+    bMesh.body.setMatrixAt(i, _bm); bMesh.head.setMatrixAt(i, _bm);
+    const fl = sitting ? 1.35 : Math.sin(b.flap) * 0.9 + (b.high ? 0.15 : 0);
+    for (const sd of [-1, 1]) {
+      _bl.makeRotationZ(sitting ? sd * -1.4 : sd * fl * -1 + 0);
+      if (sd < 0) _bl.premultiply(new THREE.Matrix4().makeRotationY(Math.PI));
+      _bl.setPosition(sd * 0.08, 0.04, 0.02);
+      if (sitting) _bl.scale(_bsv.set(0.5, 1, 1));
+      _br.multiplyMatrices(_bm, _bl); bMesh.wing.setMatrixAt(i * 2 + (sd > 0 ? 1 : 0), _br);
+    }
+  });
+  for (const k in bMesh) bMesh[k].instanceMatrix.needsUpdate = true;
+}
+
+// ---------------- keep the screen awake while playing ----------------
+let wakeLock = null;
+async function keepAwake() {
+  try { if ('wakeLock' in navigator && !wakeLock && document.visibilityState === 'visible') { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); } } catch (e) {}
+}
+addEventListener('pointerdown', keepAwake);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') keepAwake(); });
+
 // ---------------- squeaky voices ----------------
 // Synthesised in the browser: fast pitched-up syllables. A hit gets a long drawn-out one, and sometimes a bleep.
 let actx = null, lastYell = 0;
@@ -778,6 +1423,17 @@ addEventListener('pointerdown', () => {
 function yell(kind, x, z) {
   if (!actx || !P.sound || actx.state !== 'running') return;
   const now = actx.currentTime;
+  if (kind === 'gull') {                     // a quick "kee-ow"
+    const dist = Math.hypot(x - camera.position.x, z - camera.position.z), vol = 0.04 * clamp(1.4 - dist / (RMAX * 1.5), 0.3, 1);
+    let t0 = now + 0.01;
+    for (let i = 0; i < 2 + Math.floor(Math.random() * 2); i++) {
+      const o = actx.createOscillator(), g = actx.createGain(); o.type = 'triangle';
+      o.frequency.setValueAtTime(1700, t0); o.frequency.exponentialRampToValueAtTime(950, t0 + 0.22);
+      g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.24);
+      o.connect(g); g.connect(actx.destination); o.start(t0); o.stop(t0 + 0.26); t0 += 0.3;
+    }
+    return;
+  }
   if (now - lastYell < 0.15) return;
   lastYell = now;
   const dist = Math.hypot(x - camera.position.x, z - camera.position.z);
@@ -871,10 +1527,13 @@ function setSun() {
   sun.position.set(0.45, 0.8, 0.35).normalize().multiplyScalar(RMAX * 4 + HOOK_Y);
 }
 
+let quay = { on: false, a: 0, d: 1e9 };
+const beyondQuay = (x, z, margin) => quay.on && (x * Math.cos(quay.a) + z * Math.sin(quay.a)) > quay.d - (margin || 0);
 function newYard() {
   if (yard) { scene.remove(yard); yard.traverse(o => o.dispose && o.dispose()); }
   hints.clear(); padGroup.clear();
   boxes = []; hash = new Map();
+  quay = { on: !!P.quay, a: Math.random() * Math.PI * 2, d: RMAX * 1.12 };
 
   const BX = P.blockLen, BZ = P.blockRows;
   const AX = Math.max(2, Math.round(P.aisle / CW)), AZ = Math.max(3, Math.round(P.aisle / ROW));
@@ -890,7 +1549,7 @@ function newYard() {
   const valid = new Uint8Array(NI * NJ);
   for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
     const r = Math.hypot(nodeX(i), nodeZ(j));
-    valid[idx(i, j)] = r > Math.max(mastClear, RMAX * 0.38) && r < RMAX + P.aisle * 0.4 ? 1 : 0;
+    valid[idx(i, j)] = r > Math.max(mastClear, RMAX * 0.38) && r < RMAX + P.aisle * 0.4 && !beyondQuay(nodeX(i), nodeZ(j), P.aisle) ? 1 : 0;
   }
   const nearestNode = (p, pool) => {
     let best = null, bd = Infinity;
@@ -932,10 +1591,13 @@ function newYard() {
   const K = 8192, key = (ix, iz) => (ix + 4096) * K + (iz + 4096);
   const unkey = k => [Math.floor(k / K) - 4096, (k % K) - 4096];
   const farR = RMAX * 1.3;
-  const okCell = (ix, iz) => { const r = Math.hypot((ix + 0.5) * CW, (iz + 0.5) * ROW); return r > mastHalf + R * 2 && r < farR; };
+  const okCell = (ix, iz) => { const r = Math.hypot((ix + 0.5) * CW, (iz + 0.5) * ROW); return r > mastHalf + R * 2 && r < farR && !beyondQuay((ix + 0.5) * CW, (iz + 0.5) * ROW, 12 * P.cscale); };
   const put = (ix, iz, n) => { if (okCell(ix, iz)) cells.set(key(ix, iz), n); };
 
+  blockList = [];
   for (let bi = i0; bi <= i1 + 1; bi++) for (let bj = j0; bj <= j1 + 1; bj++) {
+    const bcx = (bi * PXc + BX / 2) * CW, bcz = (bj * PZc + BZ / 2) * ROW, brr = Math.hypot(bcx, bcz);
+    if (brr > RMAX * 0.35 && brr < RMAX * 0.95 && !beyondQuay(bcx, bcz, PXc * CW)) blockList.push({ x0: bi * PXc * CW, x1: (bi * PXc + BX) * CW, z0: bj * PZc * ROW, z1: (bj * PZc + BZ) * ROW - (ROW - CD) });
     const base = 2 + Math.floor(Math.random() * (P.stackMax - 1));
     for (let z = 0; z < BZ; z++) {
       // heights change in runs along each row: mostly 2-4 containers at the same level
@@ -998,6 +1660,7 @@ function newYard() {
     boxes.push({ ix, iz, minX: ix * CW, maxX: (ix + 1) * CW, minZ: iz * ROW, maxZ: iz * ROW + CD, n, top: n * CH, bouncy: bouncy.has(k) });
   }
   boxes.forEach(hashInsert);
+  buildHarbour();
 
   // meshes
   yard = new THREE.Group();
@@ -1016,7 +1679,7 @@ function newYard() {
   const bj0 = Math.floor(-farOut / (PZc * ROW)), bj1 = Math.ceil(farOut / (PZc * ROW));
   for (let bi = bi0; bi <= bi1; bi++) for (let bj = bj0; bj <= bj1; bj++) {
     const bx = (bi * PXc + BX / 2) * CW, bz = (bj * PZc + BZ / 2) * ROW, rb = Math.hypot(bx, bz);
-    if (rb < farR + PXc * CW || rb > farOut) continue;
+    if (rb < farR + PXc * CW || rb > farOut || beyondQuay(bx, bz, PXc * CW)) continue;
     if (Math.random() < 0.08) continue;
     for (let z = 0; z < BZ; z++) {
       let x = 0;
@@ -1083,6 +1746,7 @@ function newYard() {
   if (debrisMesh) { scene.remove(debrisMesh); debrisMesh.dispose(); }
   debrisMesh = new THREE.InstancedMesh(unitBox, debrisMat, DEBRIS_CAP);
   debrisMesh.castShadow = true; debrisMesh.receiveShadow = true; debrisMesh.count = 0;
+  debrisMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(DEBRIS_CAP * 3).fill(1), 3);
   debrisMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   scene.add(debrisMesh);
 
@@ -1095,6 +1759,9 @@ function newYard() {
   placeForeman();
   spawnWorkers();
   spawnTrucks();
+  buildFurniture();
+  spawnMovers();
+  spawnBirds();
   drawMapBase();
   reset();
 }
@@ -1180,7 +1847,7 @@ function physicsWorld(dt) {
   staticTimer -= dt;
   if (staticTimer <= 0 && (debris.length || trucks.some(t => t.body))) {
     staticTimer = 0.15;
-    for (const d of debris.concat(trucks.filter(t => t.body).map(t => t.body))) {
+    for (const d of debris.concat(trucks.filter(t => t.body).map(t => t.body), props.filter(q => q.body).map(q => q.body), movers.filter(q => q.body).map(q => q.body))) {
       if (d.sleepState === CANNON.Body.SLEEPING) continue;
       query(d.position, CW * 1.5, tmpNear);
       for (const b of tmpNear) staticBodyFor(b);
@@ -1192,13 +1859,14 @@ function physicsWorld(dt) {
   // merch only counts as wrecked once it's properly out of place or knocked well askew
   merchTimer -= dt;
   if (merchTimer <= 0) {
-    merchTimer = 0.25; let c = 0; const lim = CD * 0.8;
+    merchTimer = 0.25; let c = 0; const lim = P.wreckDist;
     for (const d of debris) {
       const o = d.userData0; if (!o) continue;
       const moved = Math.hypot(d.position.x - o.x, d.position.y - o.y, d.position.z - o.z) > lim;
-      if (moved || Math.abs(d.quaternion.w) < 0.97) c++;
+      // anything knocked loose counts for a good share; properly shifted or tipped counts in full
+      c += (moved || Math.abs(d.quaternion.w) < 0.9992) ? 1 : P.looseCount;
     }
-    merch = c;
+    merch = Math.round(c);
     if (merch >= P.merchMax && state === 'running') { state = 'done'; showBanner(`Dock wrecked: ${merch} containers of merch trashed. Tap Retry.`); }
   }
   while (toTopple.length) { const b = toTopple.pop(); topple(b, b.pendingPush || null); b.pendingPush = null; b.pendingPoint = null; }
@@ -1222,12 +1890,15 @@ let state = 'countdown', t = 0, damage = 0, settle = 0, flash = 0, cd = 3, cdSam
 function reset() {
   unTopple();
   if (typeof spawnTrucks === 'function' && walkNodes.length) spawnTrucks();
+  if (typeof resetFurniture === 'function') resetFurniture();
+  if (typeof spawnMovers === 'function' && walkNodes.length && movers.some(m => m.body || m.carry)) spawnMovers();
   L0 = HOOK_Y - cruise();
   Object.assign(crane, { phi: start.phi, om: 0, r: start.r, v: 0, L: L0 });
   hook.copy(polar(crane.phi, crane.r, HOOK_Y));
   lp.set(hook.x, HOOK_Y - crane.L, hook.z); lpp.copy(lp);
   state = 'countdown'; t = 0; damage = 0; settle = 0; cd = 3.2; cdSamples = [];
-  tilt.cal = null; fmMood = 'waiting';
+  tilt.cal = null; roundTilt = false; fmMood = 'waiting';
+  peopleCost = 0; committedCost = 0; lastCostSeen = 0; dropping = false;
   par = computePar();
 }
 
@@ -1277,13 +1948,14 @@ const tiltAxis = (raw, zero) => {
   return Math.abs(d) < dead ? 0 : clamp((d - Math.sign(d) * dead) / P.tiltRange, -1, 1);
 };
 const tiltLive = () => P.tilt && tilt.cal && performance.now() - tilt.last < 800;
+let roundTilt = false;   // decided at the end of each countdown and kept for the whole round
 function readStick() {
   let x = 0, y = 0;
   if (joy.active) { x = joy.x; y = joy.y; }
   else if (keys.a || keys.d || keys.w || keys.s || keys.arrowleft || keys.arrowright || keys.arrowup || keys.arrowdown) {
     x = ((keys.d || keys.arrowright) ? 1 : 0) - ((keys.a || keys.arrowleft) ? 1 : 0);
     y = ((keys.s || keys.arrowdown) ? 1 : 0) - ((keys.w || keys.arrowup) ? 1 : 0);
-  } else if (tiltLive()) { x = tiltAxis(tilt.rx, tilt.cal.x); y = tiltAxis(tilt.ry, tilt.cal.y); }
+  } else if (roundTilt && tilt.cal) { x = tiltAxis(tilt.rx, tilt.cal.x); y = tiltAxis(tilt.ry, tilt.cal.y); }
   const m = Math.hypot(x, y);
   if (m < 0.06) return { x: 0, y: 0 };
   const k = Math.pow(Math.min(1, m), P.curve) / m;
@@ -1311,6 +1983,8 @@ function collide(h) {
   for (const s of near) if (!s.dead && !s.queued) sphereBox(s, h, s.bouncy ? -1 : 0.25, true);
   for (const d of debris) sphereDebris(d, h);
   for (const tk of trucks) if (tk.body) sphereDebris(tk.body, h);
+  for (const m of movers) if (m.body) sphereDebris(m.body, h);
+  collideProps(h);
 }
 // crate against a tumbling container: both bounce, momentum shared (crate weighs as much as a few containers)
 const LOAD_MASS = 20, CONT_MASS = 1, _lq = new THREE.Quaternion(), _lv = new THREE.Vector3(), _ln = new THREE.Vector3(), _lc = new THREE.Vector3();
@@ -1527,6 +2201,7 @@ function drawMapBase() {
     c.strokeStyle = '#1a1406'; c.lineWidth = Math.max(9, sz / 26); trace();
     c.strokeStyle = '#ffd21f'; c.lineWidth = Math.max(6, sz / 42); trace();
   }
+  if (quay.on) { c.save(); c.translate(X(0), Z(0)); c.rotate(quay.a); c.fillStyle = 'rgba(44,90,115,.85)'; c.fillRect(quay.d * k, -sz * 2, sz * 4, sz * 4); c.restore(); }
   c.fillStyle = '#35a86b'; c.beginPath(); c.arc(X(goal.pos.x), Z(goal.pos.z), Math.max(5, goal.padR * k), 0, 7); c.fill();
   c.strokeStyle = '#888'; c.lineWidth = 3; c.beginPath(); c.arc(X(start.pos.x), Z(start.pos.z), Math.max(5, goal.padR * k), 0, 7); c.stroke();
 }
@@ -1552,9 +2227,26 @@ function drawMap(dt) {
 }
 
 // fee: £500 for the job, docked for lateness, crate damage and wrecked merch
-function fee() {
-  const over = Math.max(0, t - par);
-  return Math.max(0, Math.round(500 * (1 - damage / 200) - over * 10 - merch * 2 - trucksWrecked * 25));
+function fee() { return Math.max(0, FEE_BASE - lateCost() - damageCost()); }
+function shownFee() { return Math.max(0, FEE_BASE - lateCost() - committedCost); }
+const FEE_BASE = 5000, COST = { worker: 50, suit: 500, boss: 1000 };
+let peopleCost = 0, committedCost = 0, lastCostSeen = 0, lastCostInc = 0, dropping = false;
+const lateCost = () => Math.round(Math.max(0, t - par) * 100);
+const damageCost = () => Math.round(2500 * damage / 100 + merch * 20 + trucksWrecked * 250 + peopleCost + propsWrecked);
+const money = n => '$' + Math.round(n).toLocaleString('en-US');
+// costs pile up in a red number above the clock while the carnage continues, then drop into the fee
+function updateCostPopup() {
+  const dc = damageCost(), now = performance.now(), pop = $('popup');
+  if (dc > lastCostSeen) { lastCostSeen = dc; lastCostInc = now; }
+  const pend = dc - committedCost;
+  if (pend > 0 && !dropping) {
+    pop.textContent = '−' + money(pend);
+    if (now - lastCostInc > 900) {
+      dropping = true; const at = dc;
+      pop.classList.add('drop'); $('fee').classList.add('hit');
+      setTimeout(() => { committedCost = at; pop.textContent = ''; pop.classList.remove('drop'); $('fee').classList.remove('hit'); dropping = false; }, 460);
+    }
+  } else if (pend <= 0 && !dropping) pop.textContent = '';
 }
 
 // ---------------- UI & loop ----------------
@@ -1577,13 +2269,15 @@ function checkGoal(dt) {
       const over = Math.max(0, t - par), f = fee();
       fmMood = over > 0 ? 'fuming' : 'happy';
       showBanner(over > 0
-        ? `Delivered ${over.toFixed(1)} s late. The foreman is fuming. Fee £${f}.`
-        : `Delivered with ${(par - t).toFixed(1)} s to spare! Fee £${f}.` + (damage > 1 ? ` (Crate ${Math.round(damage)}% damaged.)` : ''));
+        ? `Delivered ${over.toFixed(1)} s late. The foreman is fuming. Fee ${money(f)}.`
+        : `Delivered with ${(par - t).toFixed(1)} s to spare! Fee ${money(f)}.` + (damage > 1 ? ` (Crate ${Math.round(damage)}% damaged.)` : ''));
     }
   } else settle = 0;
   if (damage >= 100) { state = 'done'; showBanner('Crate wrecked. Tap Retry.'); }
+  if (beyondQuay(lp.x, lp.z, 0) && lp.y < R + 1) { state = 'done'; damage = 100; showBanner('Splash. The crate is at the bottom of the harbour.'); }
 }
 const ropeUp = new THREE.Vector3(0, 1, 0);
+let spotY = 0;
 function render(dt) {
   placeCrane();
   jibGroup.rotation.y = -crane.phi;
@@ -1598,7 +2292,11 @@ function render(dt) {
   crate.position.copy(lp);
   const dir = new THREE.Vector3().subVectors(hook, lp); const dl = dir.length();
   if (dl > 0.01) crate.quaternion.setFromUnitVectors(up, dir.divideScalar(dl));
-  const ty = topAt(hook.x, hook.z);
+  const spotR = Math.max(2.5, R * 0.9);
+  let tyT = topAt(hook.x, hook.z);
+  for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; tyT = Math.max(tyT, topAt(hook.x + Math.cos(a) * spotR, hook.z + Math.sin(a) * spotR)); }
+  spotY = tyT > spotY ? tyT : spotY + (tyT - spotY) * Math.min(1, dt * 5);
+  const ty = spotY;
   const lg = laserGeo.attributes.position;
   lg.setXYZ(0, hook.x, HOOK_Y, hook.z); lg.setXYZ(1, hook.x, ty + 0.2, hook.z); lg.needsUpdate = true;
   spot.position.set(hook.x, ty + 0.35, hook.z); spot.scale.setScalar(Math.max(2.5, R * 0.9));
@@ -1616,15 +2314,17 @@ function render(dt) {
   te.textContent = state === 'countdown' ? par.toFixed(0) : left >= 0 ? left.toFixed(1) : '+' + (-left).toFixed(1);
   te.classList.toggle('late', left < 0 && state === 'running');
   te.classList.toggle('urgent', left >= 0 && left < 10 && state === 'running');
-  $('fee').textContent = state === 'countdown' ? 'seconds to deliver' : left < 0 ? `LATE · fee £${fee()}` : `fee £${fee()}`;
-  $('joy').hidden = tiltLive() && !joy.active;
+  $('fee').textContent = state === 'countdown' ? `seconds to deliver · ${money(FEE_BASE)} job` : left < 0 ? `LATE · fee ${money(shownFee())}` : `fee ${money(shownFee())}`;
+  if (state !== 'countdown') updateCostPopup();
+  $('joy').hidden = roundTilt && !joy.active;
   $('clock').classList.toggle('lifted', P.winch);
   if (state === 'running' && left < 0) fmMood = 'cross';
   animateForeman(dt);
   drawWorkers();
+  drawBirds();
   $('dmg').firstElementChild.style.width = damage + '%';
   $('merch').firstElementChild.style.width = Math.min(100, merch / P.merchMax * 100) + '%';
-  $('speed').textContent = Math.round(vel.subVectors(lp, lpp).length() / H * 3.6) + ' km/h' + (tiltLive() ? ' · tilt steering' : '');
+  $('speed').textContent = Math.round(vel.subVectors(lp, lpp).length() / H * 3.6) + ' km/h' + (roundTilt ? ' · tilt steering' : '');
 }
 let last = performance.now(), acc = 0, paused = false, goT = 0;
 function frame(now) {
@@ -1636,6 +2336,8 @@ function frame(now) {
     if (cd > 0) showBanner(cd > 2.9 ? 'Hold steady' : String(Math.ceil(cd)));
     else {
       if (cdSamples.length) { const n = cdSamples.length; tilt.cal = { x: cdSamples.reduce((a, q) => a + q[0], 0) / n, y: cdSamples.reduce((a, q) => a + q[1], 0) / n }; }
+      roundTilt = P.tilt && cdSamples.length > 0;
+      keepAwake();
       state = 'running'; showBanner('Go!'); goT = 0.7;
     }
   }
@@ -1653,6 +2355,9 @@ function frame(now) {
     physicsWorld(simDt);   // debris keeps tumbling even after the round ends
     updateWorkers(simDt);
     updateTrucks(simDt, dt);
+    updateFurniture(simDt);
+    updateMovers(simDt);
+    updateBirds(simDt);
   }
   render(dt);
   requestAnimationFrame(frame);
@@ -1693,7 +2398,7 @@ function fillPresetList(sel) {
 }
 function syncControls() {
   for (const b of bound) b.el.value = P[b.key];
-  $('tiltChk').checked = P.tilt; $('soundChk').checked = P.sound; $('plumbChk').checked = P.plumb; $('winchChk').checked = P.winch; $('shadowChk').checked = P.shadows; $('mapRot').checked = P.mapRot;
+  $('tiltChk').checked = P.tilt; $('quayChk').checked = P.quay; $('soundChk').checked = P.sound; $('plumbChk').checked = P.plumb; $('winchChk').checked = P.winch; $('shadowChk').checked = P.shadows; $('mapRot').checked = P.mapRot;
   $('hoist').hidden = !P.winch; sun.castShadow = P.shadows;
   setFov(); refreshOutputs();
 }
@@ -1725,7 +2430,13 @@ bind('towers', 'towers', v => v.toFixed(1) + '×');
 bind('difficulty', 'difficulty', v => v + ' / 10', () => { if (state === 'countdown') par = computePar(); });
 bind('workers', 'workers', v => v);
 bind('trucks', 'trucks', v => v);
-bind('peopleSize', 'peopleSize', v => v.toFixed(2) + '× life size', () => { if (goal) placeForeman(); for (const tk of trucks) tk.g.scale.setScalar(truckScale()); });
+bind('stackers', 'stackers', v => v);
+bind('rtgs', 'rtgs', v => v);
+bind('lights', 'lights', v => v);
+bind('clutter', 'clutter', v => v.toFixed(2) + '×');
+bind('birds', 'birds', v => v);
+bind('gulls', 'gulls', v => v);
+bind('peopleSize', 'peopleSize', v => v.toFixed(2) + '× life size', () => { if (goal) placeForeman(); for (const tk of trucks) tk.g.scale.setScalar(truckScale()); for (const m of movers) m.g.scale.setScalar(P.peopleSize); });
 bind('merchMax', 'merchMax', v => v + ' containers');
 bind('slewMax', 'slewMax', v => v + '°/s');
 bind('slewAcc', 'slewAcc', v => v + '°/s²');
@@ -1739,6 +2450,8 @@ bind('g', 'g', v => v.toFixed(1) + ' m/s²');
 bind('drag', 'drag', v => v.toFixed(2));
 bind('kick', 'kick', v => v + ' m/s');
 bind('fragile', 'fragile', v => Math.round(v * 100) + '%');
+bind('wreckDist', 'wreckDist', v => v.toFixed(2) + ' m');
+bind('looseCount', 'looseCount', v => Math.round(v * 100) + '% of one');
 bind('breakSpeed', 'breakSpeed', v => v + ' m/s');
 $('plumbChk').onchange = e => { P.plumb = e.target.checked; };
 $('winchChk').checked = P.winch;
@@ -1747,8 +2460,9 @@ $('shadowChk').onchange = e => { P.shadows = e.target.checked; sun.castShadow = 
 $('mapRot').onchange = e => { P.mapRot = e.target.checked; };
 $('tiltChk').onchange = e => { P.tilt = e.target.checked; tilt.cal = null; };
 $('soundChk').onchange = e => { P.sound = e.target.checked; };
+$('quayChk').onchange = e => { P.quay = e.target.checked; };
 for (const id of ['scale', 'loadR', 'cscale']) $(id).addEventListener('input', refreshOutputs);
-for (const id of ['plumbChk', 'winchChk', 'shadowChk', 'mapRot', 'tiltChk', 'soundChk']) $(id).addEventListener('change', saveLast);
+for (const id of ['plumbChk', 'winchChk', 'shadowChk', 'mapRot', 'tiltChk', 'soundChk', 'quayChk']) $(id).addEventListener('change', saveLast);
 $('presetSave').onclick = () => {
   const name = $('presetName').value.trim();
   if (!name) { note('Give the preset a name first.'); return; }
