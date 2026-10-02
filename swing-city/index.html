@@ -47,6 +47,16 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--steel);outline-
 #hoist[hidden]{display:none}
 #hoist{position:absolute;right:18px;bottom:18px;display:flex;flex-direction:column;gap:10px;z-index:2}
 #hoist button{width:64px;height:58px;font-size:20px;border-radius:14px;touch-action:none}
+#level{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);width:120px;height:120px;border-radius:50%;z-index:3;pointer-events:none;
+  border:3px solid rgba(255,255,255,.85);background:rgba(20,30,40,.35);box-shadow:0 0 0 2px rgba(0,0,0,.3)}
+#level::before{content:'';position:absolute;left:50%;top:50%;width:26px;height:26px;margin:-13px 0 0 -13px;border-radius:50%;border:2px dashed rgba(255,255,255,.8)}
+#level span{position:absolute;top:128px;left:50%;transform:translateX(-50%);white-space:nowrap;color:#fff;font-weight:600;text-shadow:0 1px 4px rgba(0,0,0,.7)}
+#levelDot{position:absolute;left:50%;top:50%;width:22px;height:22px;margin:-11px 0 0 -11px;border-radius:50%;background:#ffc93a;box-shadow:0 0 8px rgba(255,201,58,.8)}
+#level[hidden]{display:none}
+#job{position:absolute;left:50%;top:calc(30% + 86px);transform:translateX(-50%);z-index:2;text-align:center;pointer-events:none;
+  background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:8px 16px;max-width:85%}
+#job b{display:block;font-size:20px} #job span{font-size:14px;color:var(--muted)}
+#job[hidden]{display:none}
 #banner,#toast{position:absolute;left:50%;transform:translateX(-50%);font-weight:600;text-align:center;z-index:2;
   background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px 18px;pointer-events:none}
 #banner{top:30%;font-size:22px}
@@ -77,6 +87,7 @@ textarea{font:12px/1.3 ui-monospace,monospace;width:100%;min-height:64px;backgro
 #fee{font-size:16px;font-weight:600;min-height:1.2em;transition:color .2s}
 #fee.hit{color:#ff5a4d;animation:shake .18s linear 3}
 #popup{font-size:30px;font-weight:600;color:#ff5a4d;min-height:1.15em;line-height:1.15;transition:transform .45s ease-in,opacity .45s ease-in}
+#popup.bonus{color:#3fdc7a}
 #popup.drop{transform:translateY(62px) scale(.55);opacity:0}
 #clock.lifted{bottom:150px}
 #clock .bars{display:flex;gap:6px;align-items:center;justify-content:flex-end;font-size:11px;opacity:.9;margin-top:4px}
@@ -97,7 +108,7 @@ details[open] summary::before{transform:rotate(90deg)}
 <div id="app">
   <canvas id="c"></canvas>
   <div id="clock"><div id="popup"></div><div id="time">0.0</div><div id="fee"></div>
-    <div class="bars"><span>crate</span><div id="dmg" class="meter" title="Crate damage"><i></i></div><span>merch</span><div id="merch" class="meter" title="Merch wrecked"><i></i></div></div>
+    <div class="bars"><span id="loadLabel">crate</span><div id="dmg" class="meter" title="Crate damage"><i></i></div><span>merch</span><div id="merch" class="meter" title="Merch wrecked"><i></i></div></div>
     <div id="speed"></div></div>
   <canvas id="map" aria-label="Yard map"></canvas>
   <div id="btns" class="hud">
@@ -111,6 +122,8 @@ details[open] summary::before{transform:rotate(90deg)}
   <div id="joy" aria-label="Slew and trolley stick"><div id="knob"></div></div>
   <div id="hoist" hidden><button id="up" aria-label="Hoist up">▲</button><button id="down" aria-label="Lower">▼</button></div>
   <div id="banner" hidden></div>
+  <div id="job" hidden><b id="jobName"></b><span id="jobNote"></span></div>
+  <div id="level" hidden><div id="levelDot"></div><span>Tilt back to level</span></div>
   <div id="toast" hidden></div>
   <div id="scrim" hidden></div>
   <div id="panel" hidden role="dialog" aria-label="Tuning">
@@ -136,6 +149,11 @@ details[open] summary::before{transform:rotate(90deg)}
       <label class="row">Difficulty <output id="o_difficulty"></output><input id="difficulty" type="range" min="1" max="10" step="1"></label>
       <label class="row">Speed of everything <output id="o_speed"></output><input id="speed_s" type="range" min="0.25" max="4" step="0.05"></label>
       <label class="check"><input type="checkbox" id="soundChk" checked> Sound (squeaky workers)</label>
+      <label class="check">Load <select id="loadSel">
+        <option value="random">Mixed: a different load each yard</option><option value="crate">Crate</option><option value="monkeys">Monkey crate</option>
+        <option value="liquid">Tank of liquid</option><option value="hot">Radioactive flask</option><option value="dodgy">Smugglers' box</option><option value="fragile">Fragile goods</option></select></label>
+      <label class="check">Yard number <input id="seedIn" type="text" inputmode="numeric" maxlength="6"><button id="seedBtn">Play</button></label>
+      <p class="note" id="bestNote"></p>
     </div>
     </details>
     <details><summary>Tilt (live)</summary>
@@ -179,12 +197,19 @@ details[open] summary::before{transform:rotate(90deg)}
       <label class="row">Dock workers <output id="o_workers"></output><input id="workers" type="range" min="0" max="160" step="5"></label>
       <label class="row">Service trucks <output id="o_trucks"></output><input id="trucks" type="range" min="0" max="30" step="1"></label>
       <label class="row">Reach stackers <output id="o_stackers"></output><input id="stackers" type="range" min="0" max="10" step="1"></label>
+      <label class="row">Swing-under bars over aisles <output id="o_bars"></output><input id="bars" type="range" min="0" max="8" step="1"></label>
       <label class="row">Gantry cranes <output id="o_rtgs"></output><input id="rtgs" type="range" min="0" max="8" step="1"></label>
       <label class="row">Light towers <output id="o_lights"></output><input id="lights" type="range" min="0" max="30" step="1"></label>
       <label class="row">Clutter <output id="o_clutter"></output><input id="clutter" type="range" min="0" max="3" step="0.25"></label>
       <label class="row">Birds on the ground <output id="o_birds"></output><input id="birds" type="range" min="0" max="60" step="1"></label>
       <label class="row">Gulls up high <output id="o_gulls"></output><input id="gulls" type="range" min="0" max="12" step="1"></label>
       <label class="check"><input type="checkbox" id="quayChk" checked> Harbour on one side</label>
+      <label class="row">Parked vehicles <output id="o_parked"></output><input id="parked" type="range" min="0" max="12" step="1"></label>
+      <label class="row">Odd containers on the ground <output id="o_singles"></output><input id="singles" type="range" min="0" max="20" step="1"></label>
+      <label class="row">Open containers with people about <output id="o_openBoxes"></output><input id="openBoxes" type="range" min="0" max="5" step="1"></label>
+      <label class="row">Open areas (car parks, laydown) <output id="o_zones"></output><input id="zones" type="range" min="0" max="5" step="1"></label>
+      <label class="row">Gulls flying past close up <output id="o_flybys"></output><input id="flybys" type="range" min="0" max="4" step="0.25"></label>
+      <label class="check"><input type="checkbox" id="floorChk" checked> Painted floor markings</label>
       <label class="row">People &amp; vehicles size <output id="o_peopleSize"></output><input id="peopleSize" type="range" min="0.5" max="8" step="0.25"></label>
       <label class="row">Merch you can wreck <output id="o_merchMax"></output><input id="merchMax" type="range" min="20" max="600" step="10"></label>
       <div class="check"><button id="rebuild" class="primary">Rebuild yard</button></div>
@@ -267,6 +292,7 @@ const P = {
   difficulty: 5, peopleSize: 3.75, workers: 16, sound: true, trucks: 4,
   wreckDist: 0.3, looseCount: 0.85,
   stackers: 3, rtgs: 2, lights: 6, clutter: 1, birds: 14, gulls: 3, quay: true,
+  parked: 3, singles: 4, openBoxes: 1, zones: 2, flybys: 1, floor: true, bars: 2, load: 'random',
   v: 2,
 };
 if (window.__baked && typeof window.__baked === 'object') for (const k in window.__baked) if (k in P) P[k] = window.__baked[k];
@@ -283,6 +309,7 @@ function parseSettingsText(txt) {
 }
 let fromLink = null;
 try { if (/[#&]s=/.test(location.hash)) fromLink = parseSettingsText(location.hash); } catch (e) {}
+let linkSeed = null; { const ym = location.hash.match(/[#&]y=(\d+)/); if (ym) linkSeed = +ym[1]; }
 try {
   const src = fromLink || JSON.parse(localStorage.getItem('evri-last') || 'null');
   // older saved settings: take the new, calmer crowd sizes
@@ -321,6 +348,7 @@ function applyTheme() {
     camera.far = far + Dref * 2; camera.updateProjectionMatrix();
   }
   groundMat.color.set(css('--ground'));
+  if (typeof floorMesh !== 'undefined' && floorMesh) floorMesh.material.color.set(matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.dataset.theme !== 'light' ? 0x6e6e6e : 0xffffff);
 }
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
 function resize() {
@@ -404,6 +432,7 @@ function placeCrane() {  // crane height is live
 // rope as a thin cylinder that stays visible at any distance, laser, plumb
 const rope = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 6, 1, true), new THREE.MeshBasicMaterial({ color: 0x23262a }));
 rope.castShadow = true; scene.add(rope);
+const rope2 = rope.clone(); rope2.visible = false; scene.add(rope2);
 const laserGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
 const laser = new THREE.Line(laserGeo, new THREE.LineBasicMaterial({ color: 0xff2a2a, transparent: true, opacity: 0.95 }));
 scene.add(laser);
@@ -421,13 +450,42 @@ const crateMat = new THREE.MeshLambertMaterial({ color: 0xc58b4e });
 const crate = new THREE.Group(); scene.add(crate);
 const blob = new THREE.Mesh(new THREE.CircleGeometry(1, 24), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.4, depthWrite: false }));
 blob.rotation.x = -Math.PI / 2; scene.add(blob);
+function labelTex(draw) {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 256; const g = cv.getContext('2d'); draw(g, 256);
+  const tx = new THREE.CanvasTexture(cv); return tx;
+}
+const loadTex = {};
 function buildCrate() {
   crate.clear();
-  const box = new THREE.Mesh(new THREE.BoxGeometry(R * 1.8, R * 1.6, R * 1.8), crateMat);
-  box.castShadow = true; crate.add(box);
-  crate.add(new THREE.LineSegments(new THREE.EdgesGeometry(box.geometry), new THREE.LineBasicMaterial({ color: 0x6d4520 })));
+  const L = typeof load === 'string' ? load : 'crate', ad = (m) => { m.castShadow = true; crate.add(m); return m; };
+  if (L === 'liquid') {
+    const tank = ad(new THREE.Mesh(new THREE.CylinderGeometry(R * 0.8, R * 0.8, R * 1.9, 18).rotateZ(Math.PI / 2), new THREE.MeshLambertMaterial({ color: 0xe8ecef })));
+    for (const x of [-0.95, 0.95]) { const f = ad(new THREE.Mesh(new THREE.BoxGeometry(R * 0.12, R * 1.7, R * 1.7), new THREE.MeshLambertMaterial({ color: 0x2f6fbf }))); f.position.x = x * R; }
+    const v = ad(new THREE.Mesh(new THREE.CylinderGeometry(R * 0.12, R * 0.12, R * 0.4, 8), new THREE.MeshLambertMaterial({ color: 0x555555 }))); v.position.y = R * 0.9;
+  } else if (L === 'hot') {
+    loadTex.hot = loadTex.hot || labelTex((g, n) => {
+      g.fillStyle = '#f2c500'; g.fillRect(0, 0, n, n); g.fillStyle = '#111';
+      const c = n / 2; for (let i = 0; i < 3; i++) { g.beginPath(); g.moveTo(c, c); g.arc(c, c, n * 0.36, i * 2.094 - 0.52, i * 2.094 + 0.52); g.closePath(); g.fill(); }
+      g.fillStyle = '#f2c500'; g.beginPath(); g.arc(c, c, n * 0.09, 0, 7); g.fill(); g.fillStyle = '#111'; g.beginPath(); g.arc(c, c, n * 0.06, 0, 7); g.fill();
+    });
+    ad(new THREE.Mesh(new THREE.CylinderGeometry(R * 0.85, R * 0.85, R * 1.6, 20), new THREE.MeshLambertMaterial({ map: loadTex.hot })));
+    for (const y of [-0.6, 0.6]) { const b = ad(new THREE.Mesh(new THREE.CylinderGeometry(R * 0.88, R * 0.88, R * 0.1, 20), new THREE.MeshLambertMaterial({ color: 0x1a1a1a }))); b.position.y = y * R; }
+  } else {
+    const kind = { crate: 0, monkeys: 1, dodgy: 2, fragile: 3 }[L] || 0;
+    loadTex[L] = loadTex[L] || labelTex((g, n) => {
+      g.fillStyle = ['#c58b4e', '#b98a55', '#5a4632', '#c58b4e'][kind]; g.fillRect(0, 0, n, n);
+      g.strokeStyle = 'rgba(0,0,0,0.25)'; g.lineWidth = 3; for (let y = 0; y < n; y += 32) { g.beginPath(); g.moveTo(0, y); g.lineTo(n, y); g.stroke(); }
+      if (kind === 1) { g.fillStyle = '#1b1208'; for (let i = 0; i < 5; i++) g.fillRect(28 + i * 46, 60, 16, 136); }              // air slots
+      if (kind === 2) { g.fillStyle = '#111'; g.fillRect(0, 100, n, 30); g.font = '600 30px sans-serif'; g.fillStyle = '#ddd'; g.save(); g.translate(n / 2, 70); g.rotate(-0.15); g.textAlign = 'center'; g.fillText('THIS WAY UP?', 0, 0); g.restore(); }
+      if (kind === 3) { g.fillStyle = '#c0392b'; g.fillRect(0, 96, n, 64); g.fillStyle = '#fff'; g.font = '700 40px sans-serif'; g.textAlign = 'center'; g.fillText('FRAGILE', n / 2, 142); }
+    });
+    const box = ad(new THREE.Mesh(new THREE.BoxGeometry(R * 1.8, R * 1.6, R * 1.8), new THREE.MeshLambertMaterial({ map: loadTex[L], emissive: 0x000000 })));
+    crate.add(new THREE.LineSegments(new THREE.EdgesGeometry(box.geometry), new THREE.LineBasicMaterial({ color: 0x3d2611 })));
+    crateMatNow = box.material;
+  }
   blob.scale.setScalar(R * 1.15);
 }
+let crateMatNow = crateMat;
 
 // ---------------- the foreman ----------------
 // Low-poly, chunky proportions so he reads at tiny sizes; animated fast and twitchy.
@@ -509,6 +567,7 @@ const LOOK = {
   worker: () => ({ top: [0xffd21f, 0xffb21f, 0xff8a1f][Math.floor(Math.random() * 3)], legs: 0x2d3440, hat: [0xff7a00, 0xf5f5f0, 0xffd21f][Math.floor(Math.random() * 3)] }),
   boss: () => ({ top: 0xf2f2ee, arms: 0xf2f2ee, legs: 0x1c2533, hat: null }),
   suit: () => ({ top: 0x2a2e36, legs: 0x2a2e36, hat: null }),
+  smuggler: () => ({ top: [0x26282c, 0x3d2e4a, 0x2e3b2b][Math.floor(Math.random() * 3)], legs: 0x3b4f73, hat: Math.random() < 0.6 ? 0x161616 : null }),
 };
 const SKIN = [0xefc4a0, 0xd9a47c, 0xb07a52, 0x7d4f33];
 const _pc = new THREE.Color();
@@ -766,9 +825,9 @@ function spawnTrucks() {
   for (const tk of trucks) { scene.remove(tk.g); if (tk.body) world.removeBody(tk.body); }
   trucks = []; trucksWrecked = 0;
   if (!walkNodes.length) return;
-  for (let i = 0; i < P.trucks; i++) {
+  for (let i = 0; i < P.trucks + P.parked; i++) {
     const { g, beaconMat, front } = makeTruck(); scene.add(g);
-    const tk = { g, beaconMat, front, phase: Math.random() * 6, body: null, wreckT: 0 };
+    const tk = { g, beaconMat, front, phase: Math.random() * 6, body: null, wreckT: 0, parked: i >= P.trucks };
     placeTruck(tk); trucks.push(tk);
   }
 }
@@ -809,7 +868,16 @@ function updateTrucks(dt, rdt) {
       tk.g.position.set(b.position.x, b.position.y - 1.2 * ts, b.position.z);
       tk.g.quaternion.set(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w);
       tk.wreckT += dt;
-      if (tk.wreckT > 8 && b.sleepState === CANNON.Body.SLEEPING) { world.removeBody(b); tk.body = null; placeTruck(tk); for (const fw of tk.front) fw.rotation.y = 0; }
+      if (tk.wreckT > 8 && b.sleepState === CANNON.Body.SLEEPING) { world.removeBody(b); tk.body = null; placeTruck(tk); tk.parkedAt = false; for (const fw of tk.front) fw.rotation.y = 0; }
+      continue;
+    }
+    if (tk.parked) {
+      // parked up at the side of an aisle, engine off
+      if (!tk.parkedAt) { tk.parkedAt = true; const s2 = laneHalf * 0.6; tk.x -= Math.cos(tk.h) * s2; tk.z += Math.sin(tk.h) * s2; }
+      tk.beaconMat.color.setHex(0x3a2000);
+      tk.g.position.set(tk.x, 0, tk.z); tk.g.rotation.set(0, tk.h, 0);
+      const px = tk.x - lp.x, pz = tk.z - lp.z, pd = Math.hypot(px, pz) || 0.01;
+      if (pd < R + 2 * ts && lp.y - R < 2.4 * ts && Math.hypot(cv.x, cv.y, cv.z) > 1.5) wreckTruck(tk, cv, px / pd, pz / pd);
       continue;
     }
     refillWaypoints(tk);
@@ -865,7 +933,7 @@ const waterMat = new THREE.MeshLambertMaterial({ color: 0x2c5a73, emissive: 0x06
 const concreteMat = new THREE.MeshLambertMaterial({ color: 0xb9b5ac });
 const hullMat = [new THREE.MeshLambertMaterial({ color: 0x2b3440 }), new THREE.MeshLambertMaterial({ color: 0x7a2323 }), new THREE.MeshLambertMaterial({ color: 0x1f4a6e })];
 const stsMat = new THREE.MeshLambertMaterial({ color: 0x2f6fbf });
-let blockList = [];
+let blockList = [], allBlocks = [], zones = [];
 function buildHarbour() {
   harbour.clear();
   if (!quay.on) return;
@@ -913,7 +981,7 @@ function buildHarbour() {
 
 // ---------------- yard furniture: gantry cranes, light towers and clutter ----------------
 // Light towers and clutter are static until hit, then become physics bodies. Gantry cranes trundle along their block.
-let props = [], rtgs = [], propsWrecked = 0;
+let props = [], rtgs = [], propsWrecked = 0, portals = [];
 const lampMat = new THREE.MeshLambertMaterial({ color: 0xfff2c0, emissive: 0x6a5a20 });
 const poleMat = new THREE.MeshLambertMaterial({ color: 0x9aa3ab });
 const rtgMat = new THREE.MeshLambertMaterial({ color: 0xf2b705 });
@@ -926,7 +994,7 @@ function addProp(g, x, z, yaw, he, mass, cost) {
   props.push({ g, x, z, yaw, he, mass, cost, body: null });
 }
 function buildFurniture() {
-  furniture.clear(); props = []; rtgs = []; propsWrecked = 0;
+  furniture.clear(); props = []; rtgs = []; propsWrecked = 0; portals = [];
   const cs = P.cscale, ps = P.peopleSize;
   // light towers at the corners of junctions
   const nodes = walkNodes.slice().sort(() => Math.random() - 0.5);
@@ -953,6 +1021,100 @@ function buildFurniture() {
       else { const m = new THREE.Mesh(new THREE.BoxGeometry(1.2 * ps, 0.15 * ps, 1 * ps), clutterMat.pallet); m.position.y = 0.075 * ps; g.add(m);
         const sk = new THREE.Mesh(new THREE.BoxGeometry(1.1 * ps, 0.7 * ps, 0.9 * ps), clutterMat.sack); sk.position.y = 0.5 * ps; g.add(sk);
         addProp(g, x, z, Math.random() * 6.28, [0.6 * ps, 0.45 * ps, 0.5 * ps], 0.4, 40); }
+    }
+  }
+  // the odd container just left on the ground, at an angle
+  const looseMat = PAL.map(c => new THREE.MeshLambertMaterial({ color: new THREE.Color(c[0], c[1], c[2]) }));
+  const groundBox = (x, z, yaw, open) => {
+    const g = new THREE.Group();
+    const m = new THREE.Mesh(new THREE.BoxGeometry(CW, CH, CD), looseMat[Math.floor(Math.random() * looseMat.length)]); m.position.y = CH / 2; g.add(m);
+    if (open) {
+      // doors swung wide at one end, dark inside
+      const inside = new THREE.Mesh(new THREE.PlaneGeometry(CD * 0.9, CH * 0.9), new THREE.MeshBasicMaterial({ color: 0x0c0c0c }));
+      inside.rotation.y = Math.PI / 2; inside.position.set(CW / 2 + 0.02, CH / 2, 0); g.add(inside);
+      for (const sd of [-1, 1]) {
+        const door = new THREE.Mesh(new THREE.BoxGeometry(0.08, CH * 0.95, CD / 2), m.material);
+        door.geometry.translate(0, 0, sd * CD / 4);
+        door.position.set(CW / 2 + 0.05, CH / 2, sd * CD / 2); door.rotation.y = sd * 1.75; g.add(door);
+      }
+    }
+    addProp(g, x, z, yaw, [CW / 2, CH / 2, CD / 2], 1, 20);
+    return g;
+  };
+  const aisleSpot = () => {
+    for (let k = 0; k < 30; k++) {
+      const a = Math.floor(Math.random() * walkNodes.length), nb = walkAdj[a]; if (!nb.length) continue;
+      const b2 = nb[Math.floor(Math.random() * nb.length)], A = walkNodes[a], B = walkNodes[b2], f = 0.25 + Math.random() * 0.5;
+      const dx = B.x - A.x, dz = B.z - A.z, L = Math.hypot(dx, dz) || 1, side = (Math.random() < 0.5 ? -1 : 1) * laneHalf * 0.75;
+      const x = A.x + dx * f - dz / L * side, z = A.z + dz * f + dx / L * side;
+      if (topAt(x, z) > 0 || Math.hypot(x - goal.pos.x, z - goal.pos.z) < goal.padR * 3 || Math.hypot(x - start.pos.x, z - start.pos.z) < goal.padR * 3) continue;
+      return { x, z, yaw: Math.atan2(dx, dz) + Math.PI / 2 + (Math.random() - 0.5) * 0.6 };
+    }
+    return null;
+  };
+  for (let i = 0; i < P.singles; i++) { const sp = aisleSpot(); if (sp) groundBox(sp.x, sp.z, sp.yaw, false); }
+  for (let i = 0; i < P.openBoxes; i++) {
+    const sp = aisleSpot(); if (!sp) continue;
+    groundBox(sp.x, sp.z, sp.yaw, true);
+    // whoever's hanging round the open doors
+    const kind = ['smuggler', 'smuggler', 'suit', 'worker'][Math.floor(Math.random() * 4)];
+    const ex = sp.x + Math.cos(sp.yaw) * (CW / 2 + 2.5 * ps), ez = sp.z - Math.sin(sp.yaw) * (CW / 2 + 2.5 * ps);
+    const cnt = 2 + Math.floor(Math.random() * 2), a0 = Math.random() * 6.28;
+    for (let k = 0; k < cnt; k++) {
+      const ang = a0 + k * 2 * Math.PI / cnt, p = new THREE.Vector3(ex + Math.cos(ang) * 0.8 * ps, 0, ez + Math.sin(ang) * 0.8 * ps);
+      const face = Math.atan2(ex - p.x, ez - p.z);
+      newPerson(kind, p, { mode: 'chat', home: p.clone(), face, h: face, talkT: Math.random() * 4, alert: kind === 'smuggler' ? 0.95 : Math.random() });
+    }
+  }
+  // open areas
+  const carCols = [0xc0392b, 0x2f6fbf, 0xe8e8e2, 0x2b2f33, 0x8e9aa6, 0xd9a21f, 0x3f6b3a];
+  const onRoad = (q, x, z, pad) => Math.abs(Math.hypot(x - q.ax, z - q.az) - q.arcR) < q.roadW / 2 + pad;
+  for (const q of zones) {
+    q.bays = [];
+    if (q.kind === 'carpark') {
+      const cw = 2.6 * ps, cl = 5.2 * ps, aisleW = cl * 1.4;
+      for (let zz = q.z - q.r; zz < q.z + q.r; zz += cl * 2 + aisleW) for (const row of [0, 1]) for (let xx = q.x - q.r; xx < q.x + q.r; xx += cw) {
+        const cz = zz + row * cl + cl / 2, cx = xx + cw / 2;
+        if (Math.hypot(cx - q.x, cz - q.z) > q.r - cl || onRoad(q, cx, cz, cl) || topAt(cx, cz) > 0) continue;
+        q.bays.push({ x: cx, z: cz, w: cw, l: cl });
+        if (Math.random() < 0.7) {
+          const g = new THREE.Group(), col = new THREE.MeshLambertMaterial({ color: carCols[Math.floor(Math.random() * carCols.length)] });
+          const body = new THREE.Mesh(new THREE.BoxGeometry(1.8 * ps, 0.75 * ps, 4.4 * ps), col); body.position.y = 0.55 * ps; g.add(body);
+          const cab = new THREE.Mesh(new THREE.BoxGeometry(1.6 * ps, 0.55 * ps, 2.2 * ps), truckMat.glass); cab.position.set(0, 1.15 * ps, -0.2 * ps); g.add(cab);
+          addProp(g, cx, cz, row ? 0 : Math.PI, [0.9 * ps, 0.7 * ps, 2.2 * ps], 0.6, 150);
+        }
+      }
+    } else {
+      const n = Math.round(Math.min(16, q.r * q.r / (CW * CW * 6)));
+      for (let k = 0; k < n; k++) {
+        const a = Math.random() * 6.28, rr = Math.sqrt(Math.random()) * (q.r - CW), x = q.x + Math.cos(a) * rr, z = q.z + Math.sin(a) * rr;
+        if (onRoad(q, x, z, CW) || topAt(x, z) > 0) continue;
+        groundBox(x, z, Math.random() * 6.28, Math.random() < 0.08);
+      }
+    }
+  }
+  // portal frames over the aisles: swing the crate under the bar and the rope catches on it
+  const hazard = new THREE.MeshLambertMaterial({ color: 0xf2b705 }), stripe = new THREE.MeshLambertMaterial({ color: 0x1d1d1d });
+  const usedEdges = new Set();
+  for (let i = 0; i < P.bars && walkEdgesForFloor.length; i++) {
+    for (let tries = 0; tries < 20; tries++) {
+      const ei = Math.floor(Math.random() * walkEdgesForFloor.length); if (usedEdges.has(ei)) continue;
+      const [A, B] = walkEdgesForFloor[ei], mx = (A.x + B.x) / 2, mz = (A.z + B.z) / 2;
+      if (Math.hypot(mx - goal.pos.x, mz - goal.pos.z) < goal.padR * 4 || Math.hypot(mx - start.pos.x, mz - start.pos.z) < goal.padR * 4) continue;
+      const dx = B.x - A.x, dz = B.z - A.z, L = Math.hypot(dx, dz) || 1, px = -dz / L, pz = dx / L;
+      // find the aisle's width here
+      let half = 0; while (half < laneHalf * 3 && topAt(mx + px * (half + 1), mz + pz * (half + 1)) === 0 && topAt(mx - px * (half + 1), mz - pz * (half + 1)) === 0) half += 1;
+      half = Math.max(laneHalf, half - 1.5 * P.cscale);
+      const hb = 4 * CH, legW = 1.2 * P.cscale, g = new THREE.Group();
+      for (const sd of [-1, 1]) { const leg = new THREE.Mesh(new THREE.BoxGeometry(legW, hb, legW), hazard); leg.position.set(mx + px * half * sd, hb / 2, mz + pz * half * sd); g.add(leg); }
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(legW, legW, half * 2 + legW), hazard);
+      bar.position.set(mx, hb, mz); bar.rotation.y = Math.atan2(px, pz); g.add(bar);
+      for (let k = -3; k <= 3; k++) { const st = new THREE.Mesh(new THREE.BoxGeometry(legW * 1.05, legW * 1.05, half * 0.08), stripe); st.position.set(mx + px * k * half * 0.28, hb, mz + pz * k * half * 0.28); st.rotation.y = bar.rotation.y; g.add(st); }
+      g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      furniture.add(g); usedEdges.add(ei);
+      portals.push({ ax: mx - px * half, az: mz - pz * half, bx: mx + px * half, bz: mz + pz * half, hb, legW,
+        boxes: [-1, 1].map(sd => ({ minX: mx + px * half * sd - legW / 2, maxX: mx + px * half * sd + legW / 2, minZ: mz + pz * half * sd - legW / 2, maxZ: mz + pz * half * sd + legW / 2, top: hb, minY: 0 })) });
+      break;
     }
   }
   // rubber-tyred gantry cranes straddling a block, trundling up and down it
@@ -1025,13 +1187,19 @@ function propKnock(pr, cv) {
 function collideProps(h) {
   // gantry legs and girders: solid
   for (const bx of rtgBoxes(_rb)) sphereBoxY(bx, h);
+  for (const q of portals) {
+    for (const bx of q.boxes) sphereBoxY(bx, h);
+    // the bar itself, as a short run of boxes along it
+    for (let k = 0; k <= 8; k++) { const tt = k / 8, x = q.ax + (q.bx - q.ax) * tt, z = q.az + (q.bz - q.az) * tt, hw = q.legW / 2 + 0.5;
+      sphereBoxY({ minX: x - hw, maxX: x + hw, minZ: z - hw, maxZ: z + hw, minY: q.hb - q.legW / 2, top: q.hb + q.legW / 2 }, h); }
+  }
   // standing props: knocked flying by anything but the gentlest touch
   for (const pr of props) {
     if (pr.body) { sphereDebris(pr.body, h); continue; }
     const dx = lp.x - pr.g.position.x, dz = lp.z - pr.g.position.z, rad = Math.max(pr.he[0], pr.he[2]);
     if (dx * dx + dz * dz > (R + rad) ** 2 || lp.y - R > pr.he[1] * 2) continue;
     const cv = vel.clone().subVectors(lp, lpp).divideScalar(h);
-    propKnock(pr, cv);
+    propKnock(pr, cv); loadShock(Math.hypot(cv.x, cv.z));
   }
 }
 // a box that doesn't reach the ground (girders): same as sphereBox but with a bottom
@@ -1291,7 +1459,7 @@ for (const k in bMesh) {
   const m = bMesh[k]; m.count = 0; m.castShadow = true; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(m.instanceMatrix.count * 3).fill(1), 3); scene.add(m);
 }
-let birds = [];
+let birds = [], flybyT = 20;
 const _bc = new THREE.Color();
 function birdSpotNear(p, rad) {
   for (let k = 0; k < 12; k++) { const q = birdSpot(); if (Math.hypot(q.x - p.x, q.z - p.z) < rad) return q; }
@@ -1325,21 +1493,44 @@ function spawnBirds() {
     birds.push({ gull: true, high: true, p: new THREE.Vector3(Math.cos(a) * r, HOOK_Y * (0.3 + Math.random() * 0.35), Math.sin(a) * r), v: new THREE.Vector3(),
       h: Math.random() * 6.28, mode: 'glide', t: 0, flap: Math.random() * 6, bank: 0, turn: (Math.random() < 0.5 ? -1 : 1) * (0.08 + Math.random() * 0.12), cx: Math.cos(a) * r, cz: Math.sin(a) * r });
   }
+  paintBirds();
+}
+function paintBirds() {
   birds.forEach((b, i) => {
-    const body = b.gull ? 0xf4f4f2 : [0x8a8f98, 0x6f747c, 0x9a9590][i % 3], wing = b.gull ? 0xaab2ba : body * 1;
+    const body = b.gull ? 0xf4f4f2 : [0x8a8f98, 0x6f747c, 0x9a9590][i % 3], wing = b.gull ? 0xaab2ba : body;
     bMesh.body.setColorAt(i, _bc.set(body)); bMesh.head.setColorAt(i, _bc.set(b.gull ? 0xffffff : 0x5c6068));
     bMesh.wing.setColorAt(i * 2, _bc.set(wing)); bMesh.wing.setColorAt(i * 2 + 1, _bc.set(wing));
   });
   for (const k in bMesh) bMesh[k].instanceColor.needsUpdate = true;
 }
+const _fd = new THREE.Vector3();
+function spawnFlyby() {
+  // a little skein of gulls passing between the camera and the yard, a fifth of the way down
+  camera.getWorldDirection(_fd);
+  const down = Math.max(0.15, -_fd.y), D = (camera.position.y - 0) / down, depth = D * (0.12 + Math.random() * 0.15);
+  const c = camera.position.clone().addScaledVector(_fd, depth);
+  const right = new THREE.Vector3(-_fd.z, 0, _fd.x).normalize();
+  const half = depth * Math.tan(camera.fov * DEG / 2) * Math.max(1, camera.aspect) * 1.6, dirSign = Math.random() < 0.5 ? 1 : -1;
+  const heading = Math.atan2(right.x * dirSign, right.z * dirSign) + (Math.random() - 0.5) * 0.7;
+  const n = 1 + Math.floor(Math.random() * 4), sp = 14 * P.peopleSize;
+  for (let k = 0; k < n; k++) {
+    const p = c.clone().addScaledVector(right, -dirSign * (half + k * 3 * P.peopleSize)).add(new THREE.Vector3((Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6).multiplyScalar(P.peopleSize));
+    if (birds.length >= BMAX) break;
+    birds.push({ gull: true, high: true, flyby: true, life: (2 * half + n * 3 * P.peopleSize) / sp + 2, p, v: new THREE.Vector3(), h: heading, mode: 'glide', t: 0,
+      flap: Math.random() * 6, bank: (Math.random() - 0.5) * 0.3, turn: (Math.random() - 0.5) * 0.08, sp });
+  }
+  paintBirds();
+}
 function updateBirds(dt) {
   const bs = P.peopleSize, cv = vel.clone().subVectors(lp, lpp).divideScalar(H), cs = Math.hypot(cv.x, cv.z);
+  if (P.flybys > 0) { flybyT -= dt * P.flybys; if (flybyT <= 0) { flybyT = 25 + Math.random() * 45; spawnFlyby(); } }
+  if (birds.some(b => b.flyby && b.t > b.life)) { birds = birds.filter(b => !(b.flyby && b.t > b.life)); paintBirds(); }
   for (const b of birds) {
     b.t += dt;
     if (b.high) {
       // lazy thermalling circles, drifting around the yard
-      b.h += b.turn * dt; b.bank = -b.turn * 2.2;
-      const sp = 9 * bs;
+      b.h += b.turn * dt; b.bank = b.flyby ? b.bank : -b.turn * 2.2;
+      const sp = b.sp || 9 * bs;
       b.p.x += Math.sin(b.h) * sp * dt; b.p.z += Math.cos(b.h) * sp * dt;
       if (Math.hypot(b.p.x, b.p.z) > RMAX * 1.1 && Math.random() < dt) b.turn = Math.abs(b.turn) * Math.sign(Math.sin(b.h - Math.atan2(-b.p.x, -b.p.z)) || 1) * -1;
       b.flap += dt * (Math.sin(b.t * 0.3) > 0.7 ? 7 : 0.3);
@@ -1404,6 +1595,343 @@ function drawBirds() {
   for (const k in bMesh) bMesh[k].instanceMatrix.needsUpdate = true;
 }
 
+// ---------------- painted floor ----------------
+// One canvas texture per yard: concrete, slab joints, stains, tyre marks, lines round the stacks,
+// lane lines, and diegetic guidance: arrows along the route and "SLOW" bars before a turn after a long straight.
+let floorMesh = null, floorTex = null, walkEdgesForFloor = [];
+const floorCanvas = document.createElement('canvas');
+function buildFloor() {
+  if (!floorMesh) {
+    floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshLambertMaterial({ color: 0xffffff }));
+    floorMesh.rotation.x = -Math.PI / 2; floorMesh.position.y = 0.04; floorMesh.receiveShadow = true; scene.add(floorMesh);
+  }
+  const E = RMAX * 1.3, big = renderer.capabilities.maxTextureSize >= 8192 && (navigator.deviceMemory || 4) >= 6;
+  const SZ = big ? 4096 : 2048, k = SZ / (2 * E);
+  floorCanvas.width = floorCanvas.height = SZ;
+  const c = floorCanvas.getContext('2d');
+  const X = x => (x + E) * k, Z = z => (z + E) * k, m = v => Math.max(1, v * k);
+  // concrete
+  c.fillStyle = '#8d8a84'; c.fillRect(0, 0, SZ, SZ);
+  for (let i = 0; i < 5000; i++) {
+    const x = Math.random() * SZ, y = Math.random() * SZ, r = (2 + Math.random() * 28) * k;
+    c.fillStyle = Math.random() < 0.5 ? 'rgba(255,255,255,0.035)' : 'rgba(0,0,0,0.045)';
+    c.beginPath(); c.arc(x, y, r, 0, 7); c.fill();
+  }
+  // slab joints
+  c.strokeStyle = 'rgba(0,0,0,0.08)'; c.lineWidth = 1; c.beginPath();
+  const slab = 7.5 * P.cscale * k;
+  for (let v = 0; v < SZ; v += slab) { c.moveTo(v, 0); c.lineTo(v, SZ); c.moveTo(0, v); c.lineTo(SZ, v); }
+  c.stroke();
+  // oil stains and tyre marks
+  for (let i = 0; i < 90; i++) {
+    const n = walkNodes[Math.floor(Math.random() * walkNodes.length)]; if (!n) break;
+    const x = X(n.x + (Math.random() - 0.5) * laneHalf * 2), y = Z(n.z + (Math.random() - 0.5) * laneHalf * 2), r = (1.5 + Math.random() * 5) * k * P.peopleSize * 0.5;
+    const gr = c.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, 'rgba(25,22,18,0.35)'); gr.addColorStop(1, 'rgba(25,22,18,0)');
+    c.fillStyle = gr; c.beginPath(); c.ellipse(x, y, r, r * (0.5 + Math.random() * 0.5), Math.random() * 3, 0, 7); c.fill();
+  }
+  c.strokeStyle = 'rgba(18,18,18,0.16)'; c.lineWidth = m(0.45 * P.peopleSize);
+  for (let i = 0; i < 70; i++) {
+    const n = walkNodes[Math.floor(Math.random() * walkNodes.length)]; if (!n) break;
+    const a0 = Math.random() * 6.28, rad = (8 + Math.random() * 20) * P.peopleSize * k, cx = X(n.x) + Math.cos(a0) * rad, cy = Z(n.z) + Math.sin(a0) * rad;
+    const sweep = 0.5 + Math.random() * 1.2, gap = 1.8 * P.peopleSize * k;
+    for (const off of [0, gap]) { c.beginPath(); c.arc(cx, cy, rad + off, a0 + Math.PI, a0 + Math.PI + sweep); c.stroke(); }
+  }
+  // dashed lines round the stacks
+  c.setLineDash([m(3), m(2)]); c.strokeStyle = 'rgba(255,255,255,0.55)'; c.lineWidth = m(0.3);
+  const pad = 1.5 * P.cscale;
+  for (const b of allBlocks) { if (Math.abs(b.x0) > E && Math.abs(b.x1) > E) continue; c.strokeRect(X(b.x0 - pad), Z(b.z0 - pad), (b.x1 - b.x0 + 2 * pad) * k, (b.z1 - b.z0 + 2 * pad) * k); }
+  // lane lines down the middle of open aisles
+  c.setLineDash([m(5), m(5)]); c.strokeStyle = 'rgba(240,200,40,0.6)'; c.lineWidth = m(0.35);
+  c.beginPath(); for (const [a, b] of walkEdgesForFloor) { c.moveTo(X(a.x), Z(a.z)); c.lineTo(X(b.x), Z(b.z)); } c.stroke();
+  c.setLineDash([]);
+  // hatched no-go ring round the crane's foot, and a yellow edge along the quay
+  const hatch = (path) => {
+    c.save(); path(); c.clip();
+    c.fillStyle = 'rgba(240,190,30,0.55)'; c.fillRect(0, 0, SZ, SZ);
+    c.strokeStyle = 'rgba(25,25,25,0.6)'; c.lineWidth = m(1.2);
+    for (let v = -SZ; v < SZ * 2; v += m(3.5)) { c.beginPath(); c.moveTo(v, 0); c.lineTo(v + SZ, SZ); c.stroke(); }
+    c.restore();
+  };
+  hatch(() => { c.beginPath(); c.arc(X(0), Z(0), (mastHalf + R * 2.5) * k, 0, 7); c.arc(X(0), Z(0), (mastHalf + 2) * k, 0, 7, true); });
+  if (quay.on) { c.save(); c.translate(X(0), Z(0)); c.rotate(quay.a); c.fillStyle = 'rgba(240,190,30,0.85)'; c.fillRect((quay.d - 3 * P.cscale) * k, -SZ * 2, m(1.2), SZ * 4); c.restore(); }
+  // open areas: bays and a curving road
+  for (const q of zones) {
+    c.lineWidth = m(0.3); c.strokeStyle = 'rgba(255,255,255,0.7)';
+    for (const b of (q.bays || [])) c.strokeRect(X(b.x - b.w / 2), Z(b.z - b.l / 2), b.w * k, b.l * k);
+    c.save(); c.beginPath(); c.arc(X(q.x), Z(q.z), q.r * 1.15 * k, 0, 7); c.clip();
+    c.fillStyle = 'rgba(40,40,42,0.35)'; c.beginPath(); c.arc(X(q.ax), Z(q.az), (q.arcR + q.roadW / 2) * k, 0, 7); c.arc(X(q.ax), Z(q.az), (q.arcR - q.roadW / 2) * k, 0, 7, true); c.fill();
+    c.strokeStyle = 'rgba(255,255,255,0.8)'; c.lineWidth = m(0.35);
+    for (const o of [-1, 1]) { c.beginPath(); c.arc(X(q.ax), Z(q.az), (q.arcR + o * q.roadW / 2 * 0.9) * k, 0, 7); c.stroke(); }
+    c.setLineDash([m(4), m(4)]); c.strokeStyle = 'rgba(240,200,40,0.8)'; c.beginPath(); c.arc(X(q.ax), Z(q.az), q.arcR * k, 0, 7); c.stroke(); c.setLineDash([]);
+    c.restore();
+  }
+  // indicators rather than a route: dotted turn guides round some corners and braking lines before some turns.
+  // The route's own corners get them more often than elsewhere, so they help without spelling it out.
+  const pn = pathNodes, rnd3 = () => Math.floor(Math.random() * 3);
+  const dirOf = (a, b) => { const v = new THREE.Vector3(b.x - a.x, 0, b.z - a.z); return v.normalize(); };
+  const turnGuide = (b, d1, d2, style) => {
+    const r = laneHalf * (1.1 + Math.random() * 0.9);
+    c.save(); c.strokeStyle = 'rgba(255,255,255,0.55)'; c.lineWidth = m(style === 2 ? 0.45 : 0.3);
+    c.setLineDash(style === 0 ? [m(1), m(1.6)] : style === 1 ? [m(2.4), m(1.8)] : [m(0.8), m(0.9)]);
+    for (const f of (style === 2 ? [0.85, 1.15] : [1])) {
+      const rr = r * f;
+      c.beginPath(); c.moveTo(X(b.x - d1.x * rr), Z(b.z - d1.z * rr)); c.quadraticCurveTo(X(b.x), Z(b.z), X(b.x + d2.x * rr), Z(b.z + d2.z * rr)); c.stroke();
+    }
+    c.restore();
+  };
+  const brakeBars = (b, d1, style) => {
+    const ang = Math.atan2(d1.z, d1.x), w = laneHalf * (1.5 + Math.random() * 0.7), n = 3 + Math.floor(Math.random() * 3);
+    let back = laneHalf * 1.6 + 6, gap = 5 + Math.random() * 4;
+    c.save(); c.fillStyle = 'rgba(255,255,255,0.6)'; c.strokeStyle = 'rgba(255,255,255,0.6)';
+    for (let i = 0; i < n; i++) {
+      const cx = b.x - d1.x * back, cz = b.z - d1.z * back;
+      c.save(); c.translate(X(cx), Z(cz)); c.rotate(ang);
+      if (style === 0) { for (const o of [-0.7, 0.7]) c.fillRect(o * m(1) - m(0.2), -w * k / 2, m(0.4), w * k); }        // double lines
+      else if (style === 1) { c.lineWidth = m(0.45); c.setLineDash([m(1.5), m(1)]); for (const o of [-0.8, 0.8]) { c.beginPath(); c.moveTo(o * m(1), -w * k / 2); c.lineTo(o * m(1), w * k / 2); c.stroke(); } }
+      else { c.fillRect(-m(0.5), -w * k / 2, m(1), w * k); }
+      c.restore();
+      back += gap; gap *= 1.18;                          // tighter together nearer the turn
+    }
+    c.restore();
+  };
+  for (let i = 1; i < pn.length - 1; i++) {
+    const d1 = dirOf(pn[i - 1], pn[i]), d2 = dirOf(pn[i], pn[i + 1]);
+    if (d1.dot(d2) > 0.7) continue;
+    if (Math.random() < 0.55) turnGuide(pn[i], d1, d2, rnd3());
+    let run = pn[i - 1].distanceTo(pn[i]);
+    for (let j = i - 1; j > 0; j--) { if (dirOf(pn[j - 1], pn[j]).dot(d1) < 0.95) break; run += pn[j].distanceTo(pn[j - 1]); }
+    if (run >= 160 && Math.random() < 0.6) brakeBars(pn[i], d1, rnd3());
+  }
+  walkNodes.forEach((b, bi) => {
+    const nb = walkAdj[bi]; if (nb.length < 2 || Math.random() > 0.12) return;
+    const d1 = dirOf(walkNodes[nb[0]], b), d2 = dirOf(b, walkNodes[nb[1]]);
+    if (Math.abs(d1.dot(d2)) > 0.7) return;
+    turnGuide(b, d1, d2, rnd3());
+  });
+  for (let i = 0; i < Math.min(5, walkEdgesForFloor.length); i++) {
+    const [A, B] = walkEdgesForFloor[Math.floor(Math.random() * walkEdgesForFloor.length)];
+    if (A.distanceTo(B) > laneHalf * 6) brakeBars(B, dirOf(A, B), rnd3());
+  }
+  // zebra crossings at a few junctions
+  for (let i = 0; i < Math.min(8, walkNodes.length); i++) {
+    const n = walkNodes[Math.floor(Math.random() * walkNodes.length)], ang = Math.random() < 0.5 ? 0 : Math.PI / 2;
+    c.save(); c.translate(X(n.x), Z(n.z)); c.rotate(ang); c.fillStyle = 'rgba(255,255,255,0.6)';
+    for (let s2 = -4; s2 <= 4; s2++) c.fillRect(s2 * m(1.6) - m(0.4), -laneHalf * 0.6 * k, m(0.8), laneHalf * 1.2 * k);
+    c.restore();
+  }
+  if (floorTex) floorTex.dispose();
+  floorTex = new THREE.CanvasTexture(floorCanvas);
+  floorTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  floorMesh.material.map = floorTex; floorMesh.material.needsUpdate = true;
+  floorMesh.scale.set(2 * E, 2 * E, 1); floorMesh.visible = P.floor;
+  applyTheme();
+}
+
+// ---------------- loads ----------------
+const LOADS = {
+  crate:   { name: 'Crate', note: 'A standard job. Try not to bash it about.', fee: 5000, w: 2, meter: 'crate' },
+  monkeys: { name: 'Monkey crate', note: 'Five monkeys. Jolt the crate and they get out. Swoop low over a loose one to catch it.', fee: 6000, w: 2.5, meter: 'monkeys' },
+  liquid:  { name: 'Tank of liquid', note: 'It sloshes, and the slosh pushes back. Jerk it about and it spills.', fee: 6000, w: 1.5, meter: 'spill' },
+  hot:     { name: 'Radioactive flask', note: "Don't touch anything. Anything at all.", fee: 9000, w: 1, meter: 'geiger' },
+  dodgy:   { name: "Smugglers' box", note: 'No questions asked. Handle it gently.', fee: 4000, w: 1.5, meter: 'crate' },
+  fragile: { name: 'Fragile goods', note: 'Fine china. Knocks count three times over.', fee: 8000, w: 1, meter: 'crate' },
+};
+let load = 'crate', loadFail = false, loadCost = 0, monkeysIn = 0, monkeys = [], joltCD = 0, spill = 0, geiger = 0, geigerAcc = 0;
+const slosh = { x: 0, z: 0, vx: 0, vz: 0 }, prevV = new THREE.Vector3();
+function pickLoad() {
+  if (P.load !== 'random' && LOADS[P.load]) return P.load;
+  let tot = 0; for (const k in LOADS) tot += LOADS[k].w;
+  let r = Math.random() * tot; for (const k in LOADS) { r -= LOADS[k].w; if (r <= 0) return k; }
+  return 'crate';
+}
+const feeBase = () => LOADS[load].fee;
+function resetLoad() {
+  loadFail = false; loadCost = 0; joltCD = 0; spill = 0; geiger = 0; geigerAcc = 0;
+  Object.assign(slosh, { x: 0, z: 0, vx: 0, vz: 0 }); prevV.set(0, 0, 0);
+  for (const mk of monkeys) scene.remove(mk.g);
+  monkeys = []; monkeysIn = load === 'monkeys' ? 5 : 0;
+  crate.visible = true; buildCrate();
+  $('loadLabel').textContent = LOADS[load].meter;
+  $('jobName').textContent = `${LOADS[load].name} · ${money(feeBase())}`; $('jobNote').textContent = LOADS[load].note;
+}
+// a knock that matters to the load, whatever it hit
+function loadShock(speed) {
+  if (state !== 'running' || loadFail) return;
+  const thr = hitThr();
+  if (load === 'hot' && speed > 0.6) return contaminate();
+  if (load === 'dodgy' && speed > thr * 1.6) return explode();
+  if (load === 'monkeys' && speed > thr * 0.6) jolt(speed);
+}
+function failJob(msg) { loadFail = true; state = 'done'; showBanner(msg); fmMood = 'fuming'; }
+function contaminate() { failJob('Contamination! The flask touched something. Job cancelled, and nobody is happy.'); yell('hit', lp.x, lp.z); }
+
+// ---- the smugglers' box: gently does it ----
+const boom = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14), new THREE.MeshBasicMaterial({ color: 0xffa21a, transparent: true, opacity: 0.9, depthWrite: false }));
+boom.visible = false; scene.add(boom); let boomT = 0;
+function explode() {
+  const cs = P.cscale, rad = 28 * cs;
+  boom.position.copy(lp); boom.visible = true; boomT = 0.6; crate.visible = false;
+  // stacks nearby go over, outward
+  const hit = []; query(lp, rad, hit);
+  for (const b of hit) { if (b.dead || b.queued) continue; const cx = (b.minX + b.maxX) / 2 - lp.x, cz = (b.minZ + b.maxZ) / 2 - lp.z, d = Math.hypot(cx, cz) || 1, f = 30 * (1 - d / rad);
+    b.queued = true; b.pendingPush = new THREE.Vector3(cx / d * f, f * 0.6, cz / d * f); toTopple.push(b); }
+  for (const w of workers) { const dx = w.p.x - lp.x, dz = w.p.z - lp.z, d = Math.hypot(dx, dz); if (d < rad * 1.4) launch(w, dx / (d || 1) * 18, 14, dz / (d || 1) * 18); }
+  const cv = new THREE.Vector3(0, 0, 0);
+  for (const tk of trucks) if (!tk.body && Math.hypot(tk.x - lp.x, tk.z - lp.z) < rad) wreckTruck(tk, cv, (tk.x - lp.x) / rad * 4, (tk.z - lp.z) / rad * 4);
+  failJob("BOOM. Whatever was in there, it wasn't socks.");
+}
+
+// ---- liquid: a sloshing mass inside that pushes back on the swing ----
+function sloshStep(h) {
+  if (load !== 'liquid' || loadFail) return;
+  const vx = (lp.x - lpp.x) / h, vz = (lp.z - lpp.z) / h;
+  const ax = (vx - prevV.x) / h, az = (vz - prevV.z) / h; prevV.set(vx, 0, vz);
+  const w = 2.6, z = 0.08;          // about a 2.4 s slosh
+  const gain = 2.5;                  // a lively liquid: it reacts more than the tank does
+  slosh.vx += (-w * w * slosh.x - 2 * z * w * slosh.vx - gain * clamp(ax, -120, 120)) * h; slosh.x += slosh.vx * h;
+  slosh.vz += (-w * w * slosh.z - 2 * z * w * slosh.vz - gain * clamp(az, -120, 120)) * h; slosh.z += slosh.vz * h;
+  lp.x += 0.15 * w * w * slosh.x * h * h; lp.z += 0.15 * w * w * slosh.z * h * h;     // the slosh tugs the tank about
+  const mag = Math.hypot(slosh.x, slosh.z), sMax = R * 0.16;
+  if (mag > sMax && state === 'running') {
+    spill = Math.min(100, spill + (mag - sMax) / R * 90 * h);
+    if (Math.random() < 0.4) drip();
+    const k2 = sMax * 1.3 / mag; if (k2 < 1) { slosh.x *= k2; slosh.z *= k2; }
+    if (spill >= 100) failJob("The tank's empty. You've watered the whole yard.");
+  }
+}
+const drops = [], DROPS = 160;
+const dropMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: 0x4aa8d8, emissive: 0x0a2230 }), DROPS);
+dropMesh.count = 0; dropMesh.frustumCulled = false; scene.add(dropMesh);
+function drip() {
+  if (drops.length >= DROPS) drops.shift();
+  const a = Math.random() * 6.28;
+  drops.push({ p: new THREE.Vector3(lp.x + Math.cos(a) * R * 0.5, lp.y + R * 0.7, lp.z + Math.sin(a) * R * 0.5),
+    v: new THREE.Vector3((lp.x - lpp.x) / H + slosh.vx * 2 + Math.cos(a) * 2, 2 + Math.random() * 2, (lp.z - lpp.z) / H + slosh.vz * 2 + Math.sin(a) * 2), life: 3 });
+}
+function updateDrops(dt) {
+  const sz = Math.max(0.3, R * 0.12);
+  let n = 0;
+  for (let i = drops.length - 1; i >= 0; i--) {
+    const d = drops[i]; d.life -= dt; d.v.y -= P.g * dt; d.p.addScaledVector(d.v, dt);
+    const fl = topAt(d.p.x, d.p.z); if (d.p.y < fl) { d.p.y = fl + 0.05; d.v.set(0, 0, 0); }
+    if (d.life <= 0) { drops.splice(i, 1); continue; }
+  }
+  drops.forEach((d, i) => { _m.makeScale(sz, d.v.y === 0 ? sz * 0.2 : sz, sz); _m.setPosition(d.p.x, d.p.y, d.p.z); dropMesh.setMatrixAt(i, _m); n++; });
+  dropMesh.count = n; dropMesh.instanceMatrix.needsUpdate = true;
+}
+
+// ---- radioactive: the closer you get to anything, the more the counter clicks ----
+function geigerStep(dt) {
+  if (load !== 'hot' || state !== 'running') { geiger = 0; return; }
+  let dmin = 1e9;
+  for (const b of near) { if (b.dead) continue; const dx = Math.max(b.minX - lp.x, 0, lp.x - b.maxX), dz = Math.max(b.minZ - lp.z, 0, lp.z - b.maxZ), dy = Math.max(0, lp.y - b.top); dmin = Math.min(dmin, Math.hypot(dx, dy, dz)); }
+  for (const pr of props) if (!pr.body) dmin = Math.min(dmin, Math.hypot(pr.g.position.x - lp.x, pr.g.position.z - lp.z) - Math.max(pr.he[0], pr.he[2]));
+  dmin = Math.min(dmin, lp.y);
+  const range = R * 4;
+  geiger = clamp(1 - (dmin - R) / range, 0, 1) * 100;
+  geigerAcc += dt * (1 + 40 * Math.pow(geiger / 100, 2));
+  while (geigerAcc >= 1) { geigerAcc -= 1 + Math.random() * 0.3; click(); }
+}
+function click() {
+  if (!actx || !P.sound || actx.state !== 'running') return;
+  const t0 = actx.currentTime + Math.random() * 0.02, o = actx.createOscillator(), g = actx.createGain();
+  o.type = 'square'; o.frequency.value = 2400 + Math.random() * 800;
+  g.gain.setValueAtTime(0.03, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.006);
+  o.connect(g); g.connect(actx.destination); o.start(t0); o.stop(t0 + 0.01);
+}
+
+// ---- monkeys ----
+const monkeyMat = { fur: new THREE.MeshLambertMaterial({ color: 0x6b4423 }), face: new THREE.MeshLambertMaterial({ color: 0xd9b38c }), dark: new THREE.MeshLambertMaterial({ color: 0x2a190b }) };
+function makeMonkey() {
+  const g = new THREE.Group(), m = (geo, mat, x, y, z) => { const o = new THREE.Mesh(geo, mat); o.position.set(x, y, z); o.castShadow = true; g.add(o); return o; };
+  m(new THREE.BoxGeometry(0.42, 0.5, 0.34), monkeyMat.fur, 0, 0.55, 0);
+  m(new THREE.SphereGeometry(0.21, 10, 8), monkeyMat.fur, 0, 1.0, 0.03);
+  m(new THREE.SphereGeometry(0.14, 10, 8), monkeyMat.face, 0, 0.97, 0.15);
+  for (const sd of [-1, 1]) m(new THREE.SphereGeometry(0.08, 8, 6), monkeyMat.face, sd * 0.2, 1.05, 0.02);
+  const limb = (w, l, x, y) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, l, w).translate(0, -l / 2, 0), monkeyMat.fur); o.position.set(x, y, 0); o.castShadow = true; g.add(o); return o; };
+  const parts = { armL: limb(0.1, 0.5, -0.27, 0.78), armR: limb(0.1, 0.5, 0.27, 0.78), legL: limb(0.12, 0.34, -0.12, 0.34), legR: limb(0.12, 0.34, 0.12, 0.34) };
+  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.6).translate(0, 0, -0.3), monkeyMat.dark); tail.position.set(0, 0.4, -0.15); tail.rotation.x = -0.6; g.add(tail);
+  parts.tail = tail;
+  return { g, ...parts };
+}
+const monkeySize = () => P.peopleSize * 1.3;
+function jolt(speed) {
+  if (joltCD > 0) return;
+  joltCD = 0.5;
+  // a rider or two gets thrown off, and if the crate's still full, one makes a break for it
+  const riders = monkeys.filter(mk => mk.mode === 'ride');
+  if (riders.length && Math.random() < 0.6) fling(riders[Math.floor(Math.random() * riders.length)]);
+  if (monkeysIn > 0) {
+    monkeysIn--;
+    const mk = Object.assign(makeMonkey(), { mode: 'flung', t: 0, p: lp.clone().add(new THREE.Vector3(0, R, 0)), v: new THREE.Vector3(), h: Math.random() * 6.28, spin: 0, phase: 0, slot: 0 });
+    mk.g.scale.setScalar(monkeySize()); scene.add(mk.g); monkeys.push(mk); fling(mk);
+  }
+  yell('monkey', lp.x, lp.z);
+}
+function fling(mk) {
+  const a = Math.random() * 6.28, sp = 5 + Math.random() * 5;
+  mk.mode = 'flung'; mk.t = 0; mk.p.copy(lp).add(new THREE.Vector3(0, R, 0));
+  mk.v.set((lp.x - lpp.x) / H * 0.8 + Math.cos(a) * sp, 8 + Math.random() * 6, (lp.z - lpp.z) / H * 0.8 + Math.sin(a) * sp);
+  mk.spin = (Math.random() - 0.5) * 16;
+}
+const _mq = new THREE.Vector3();
+function updateMonkeys(dt) {
+  if (!monkeys.length) return;
+  joltCD = Math.max(0, joltCD - dt);
+  const ms = monkeySize();
+  monkeys.forEach((mk, idx) => {
+    mk.t += dt;
+    if (mk.mode === 'flung') {
+      mk.v.y -= P.g * 0.6 * dt; mk.p.addScaledVector(mk.v, dt); mk.g.rotation.x += mk.spin * dt;
+      const fl = topAt(mk.p.x, mk.p.z);
+      if (mk.p.y <= fl && mk.v.y < 0) { mk.p.y = fl; mk.mode = 'run'; mk.t = 0; mk.g.rotation.set(0, mk.h, 0); mk.target = null; }
+    } else if (mk.mode === 'run') {
+      // scamper about, up and over the stacks; stop now and then for a scratch
+      if (!mk.target || mk.t > mk.until) {
+        const a = Math.random() * 6.28, r = (20 + Math.random() * 60) * Math.sqrt(ms);
+        mk.target = new THREE.Vector3(mk.p.x + Math.cos(a) * r, 0, mk.p.z + Math.sin(a) * r); mk.t = 0; mk.until = 3 + Math.random() * 4; mk.sit = Math.random() < 0.3 ? 1.5 : 0;
+      }
+      if (mk.sit > 0) { mk.sit -= dt; mk.phase += dt * 3; }
+      else {
+        const dx = mk.target.x - mk.p.x, dz = mk.target.z - mk.p.z, d = Math.hypot(dx, dz) || 1, sp = 7 * Math.sqrt(ms);
+        mk.p.x += dx / d * sp * dt; mk.p.z += dz / d * sp * dt; mk.h = Math.atan2(dx, dz); mk.phase += dt * 14;
+      }
+      const fl = topAt(mk.p.x, mk.p.z);
+      mk.p.y += (fl - mk.p.y) * Math.min(1, dt * 10);
+      // a low pass with the crate and it jumps back aboard
+      const cd = Math.hypot(lp.x - mk.p.x, lp.z - mk.p.z);
+      if (cd < R + 1.5 * ms && lp.y - R < mk.p.y + 2 * ms && state === 'running') { mk.mode = 'ride'; mk.slot = Math.random() * 6.28; yell('monkey', lp.x, lp.z); }
+    } else if (mk.mode === 'ride') {
+      // perched on top, grinning; every so often gives the crate a shove
+      _mq.set(Math.cos(mk.slot) * R * 0.5, R * 0.8, Math.sin(mk.slot) * R * 0.5).applyQuaternion(crate.quaternion);
+      mk.p.copy(lp).add(_mq); mk.h += dt * 0.5; mk.phase += dt * 6;
+      if (Math.random() < dt * 0.25 && state === 'running') {
+        const a = Math.random() * 6.28, kick = 1.5 * H;
+        lpp.x -= Math.cos(a) * kick; lpp.z -= Math.sin(a) * kick;
+        if (Math.random() < 0.5) yell('monkey', lp.x, lp.z);
+      }
+    }
+    mk.g.position.copy(mk.p);
+    if (mk.mode !== 'flung') mk.g.rotation.set(0, mk.h, 0);
+    const sw = Math.sin(mk.phase);
+    mk.armL.rotation.x = mk.mode === 'ride' ? -2.6 + sw * 0.4 : sw * 0.9; mk.armR.rotation.x = mk.mode === 'ride' ? -2.6 - sw * 0.4 : -sw * 0.9;
+    mk.legL.rotation.x = -sw * 0.8; mk.legR.rotation.x = sw * 0.8; mk.tail.rotation.y = Math.sin(mk.phase * 0.5) * 0.6;
+    mk.g.position.y += mk.mode === 'run' && !mk.sit ? Math.abs(sw) * 0.4 * ms : 0;
+  });
+}
+const monkeysAboard = () => monkeysIn + monkeys.filter(mk => mk.mode === 'ride').length;
+function loadMeter() {
+  if (load === 'liquid') return spill;
+  if (load === 'hot') return geiger;
+  if (load === 'monkeys') return (5 - monkeysAboard()) / 5 * 100;
+  return damage;
+}
+function loadCostNow() {
+  if (load === 'liquid') return spill * 25;
+  if (load === 'monkeys') return (5 - monkeysAboard()) * 400;
+  return 0;
+}
+
 // ---------------- keep the screen awake while playing ----------------
 let wakeLock = null;
 async function keepAwake() {
@@ -1423,6 +1951,17 @@ addEventListener('pointerdown', () => {
 function yell(kind, x, z) {
   if (!actx || !P.sound || actx.state !== 'running') return;
   const now = actx.currentTime;
+  if (kind === 'monkey') {                   // ooh-ooh-AAH
+    const vol = 0.05; let t0 = now + 0.01;
+    for (let i = 0; i < 3; i++) {
+      const o = actx.createOscillator(), g = actx.createGain(); o.type = 'sawtooth';
+      const f0 = i < 2 ? 520 + i * 90 : 900, f1 = i < 2 ? 700 + i * 90 : 1500, dur = i < 2 ? 0.1 : 0.22;
+      o.frequency.setValueAtTime(f0, t0); o.frequency.exponentialRampToValueAtTime(f1, t0 + dur);
+      g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      o.connect(g); g.connect(actx.destination); o.start(t0); o.stop(t0 + dur + 0.02); t0 += dur + 0.03;
+    }
+    return;
+  }
   if (kind === 'gull') {                     // a quick "kee-ow"
     const dist = Math.hypot(x - camera.position.x, z - camera.position.z), vol = 0.04 * clamp(1.4 - dist / (RMAX * 1.5), 0.3, 1);
     let t0 = now + 0.01;
@@ -1519,7 +2058,7 @@ function rebuild() {
   contMat = makeContainerMaterial();
   ground.scale.set(RMAX * 12, RMAX * 12, 1);
   setSun();
-  applyTheme(); buildCrane(); buildCrate(); newYard();
+  applyTheme(); buildCrane(); buildCrate(); newYard(pendingSeed == null ? undefined : pendingSeed); pendingSeed = null;
 }
 function setSun() {
   const sc = sun.shadow.camera, ext = RMAX * 1.35;
@@ -1529,7 +2068,18 @@ function setSun() {
 
 let quay = { on: false, a: 0, d: 1e9 };
 const beyondQuay = (x, z, margin) => quay.on && (x * Math.cos(quay.a) + z * Math.sin(quay.a)) > quay.d - (margin || 0);
-function newYard() {
+let yardSeed = 0, pendingSeed = null;
+function mulberry32(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+// the same yard number always builds the same yard (with the same yard settings)
+function newYard(seed) {
+  yardSeed = (typeof seed === 'number' && isFinite(seed)) ? Math.abs(Math.floor(seed)) % 1000000 : Math.floor(Math.random() * 1000000);
+  const orig = Math.random; Math.random = mulberry32(Math.imul(yardSeed + 1, 2654435761));
+  try { buildYard(); } finally { Math.random = orig; }
+  const si = document.getElementById('seedIn'); if (si) si.value = yardSeed;
+  showBest();
+}
+function buildYard() {
+  load = pickLoad();
   if (yard) { scene.remove(yard); yard.traverse(o => o.dispose && o.dispose()); }
   hints.clear(); padGroup.clear();
   boxes = []; hash = new Map();
@@ -1544,6 +2094,17 @@ function newYard() {
   const NI = i1 - i0 + 1, NJ = j1 - j0 + 1;
   const idx = (i, j) => (i - i0) * NJ + (j - j0);
   const nodeX = i => (i * PXc + BX + AX / 2) * CW, nodeZ = j => (j * PZc + BZ + AZ / 2) * ROW - (ROW - CD) / 2;
+  // open areas break up the grid: a car park or a laydown yard with a curving road through it
+  zones = [];
+  for (let k = 0; k < P.zones; k++) for (let tries = 0; tries < 25; tries++) {
+    const a = rand(0, Math.PI * 2), r = RMAX * rand(0.5, 0.88), zr = RMAX * rand(0.12, 0.19);
+    const x = Math.cos(a) * r, z = Math.sin(a) * r;
+    if (beyondQuay(x, z, zr) || zones.some(q => Math.hypot(q.x - x, q.z - z) < q.r + zr + 30)) continue;
+    const ua = rand(0, Math.PI * 2), arcR = zr * rand(1.2, 1.7);
+    zones.push({ x, z, r: zr, kind: Math.random() < 0.5 ? 'carpark' : 'laydown', ax: x + Math.cos(ua) * arcR, az: z + Math.sin(ua) * arcR, arcR, roadW: Math.max(laneHalf * 1.4, 10 * P.peopleSize) });
+    break;
+  }
+  const inZone = (x, z, pad) => zones.some(q => Math.hypot(x - q.x, z - q.z) < q.r + (pad || 0));
   const mastClear = mastHalf + R * 3;
 
   const valid = new Uint8Array(NI * NJ);
@@ -1580,6 +2141,12 @@ function newYard() {
     if (valid[idx(i, j)] && valid[idx(i + 1, j)] && Math.random() < P.loops) openX[idx(i, j)] = 1;
   for (let i = i0; i <= i1; i++) for (let j = j0; j < j1; j++)
     if (valid[idx(i, j)] && valid[idx(i, j + 1)] && Math.random() < P.loops) openZ[idx(i, j)] = 1;
+  // inside an open area, every way is open
+  for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
+    if (!valid[idx(i, j)] || !inZone(nodeX(i), nodeZ(j), PXc * CW * 0.6)) continue;
+    if (i < i1 && valid[idx(i + 1, j)] && inZone(nodeX(i + 1), nodeZ(j), PXc * CW * 0.6)) openX[idx(i, j)] = 1;
+    if (j < j1 && valid[idx(i, j + 1)] && inZone(nodeX(i), nodeZ(j + 1), PXc * CW * 0.6)) openZ[idx(i, j)] = 1;
+  }
 
   const gN = nearestNode(polar(startPhi + (Math.random() < 0.5 ? 1 : -1) * rand(70, 130) * DEG, RMAX * rand(0.6, 0.95), 0), visited);
   start = { pos: new THREE.Vector3(nodeX(sN[0]), 0, nodeZ(sN[1])) };
@@ -1592,12 +2159,13 @@ function newYard() {
   const unkey = k => [Math.floor(k / K) - 4096, (k % K) - 4096];
   const farR = RMAX * 1.3;
   const okCell = (ix, iz) => { const r = Math.hypot((ix + 0.5) * CW, (iz + 0.5) * ROW); return r > mastHalf + R * 2 && r < farR && !beyondQuay((ix + 0.5) * CW, (iz + 0.5) * ROW, 12 * P.cscale); };
-  const put = (ix, iz, n) => { if (okCell(ix, iz)) cells.set(key(ix, iz), n); };
+  const put = (ix, iz, n) => { if (okCell(ix, iz) && !inZone((ix + 0.5) * CW, (iz + 0.5) * ROW, 2)) cells.set(key(ix, iz), n); };
 
-  blockList = [];
+  blockList = []; allBlocks = [];
   for (let bi = i0; bi <= i1 + 1; bi++) for (let bj = j0; bj <= j1 + 1; bj++) {
     const bcx = (bi * PXc + BX / 2) * CW, bcz = (bj * PZc + BZ / 2) * ROW, brr = Math.hypot(bcx, bcz);
-    if (brr > RMAX * 0.35 && brr < RMAX * 0.95 && !beyondQuay(bcx, bcz, PXc * CW)) blockList.push({ x0: bi * PXc * CW, x1: (bi * PXc + BX) * CW, z0: bj * PZc * ROW, z1: (bj * PZc + BZ) * ROW - (ROW - CD) });
+    if (!inZone(bcx, bcz, PXc * CW * 0.5)) allBlocks.push({ x0: bi * PXc * CW, x1: (bi * PXc + BX) * CW, z0: bj * PZc * ROW, z1: (bj * PZc + BZ) * ROW - (ROW - CD) });
+    if (brr > RMAX * 0.35 && brr < RMAX * 0.95 && !beyondQuay(bcx, bcz, PXc * CW) && !inZone(bcx, bcz, PXc * CW)) blockList.push({ x0: bi * PXc * CW, x1: (bi * PXc + BX) * CW, z0: bj * PZc * ROW, z1: (bj * PZc + BZ) * ROW - (ROW - CD) });
     const base = 2 + Math.floor(Math.random() * (P.stackMax - 1));
     for (let z = 0; z < BZ; z++) {
       // heights change in runs along each row: mostly 2-4 containers at the same level
@@ -1710,6 +2278,8 @@ function newYard() {
     if (j < j1 && openZ[idx(i, j)]) { const b1 = wIdx.get(idx(i, j + 1)); if (b1 !== undefined) { walkAdj[a1].push(b1); walkAdj[b1].push(a1); } }
   }
   laneHalf = Math.min(AX * CW, AZ * ROW) * 0.35;
+  walkEdgesForFloor = [];
+  walkAdj.forEach((nb, a) => nb.forEach(b => { if (a < b) walkEdgesForFloor.push([walkNodes[a], walkNodes[b]]); }));
 
   // solution path
   const prev = new Map(), q = [sN]; prev.set(idx(...sN), null);
@@ -1762,6 +2332,7 @@ function newYard() {
   buildFurniture();
   spawnMovers();
   spawnBirds();
+  buildFloor();
   drawMapBase();
   reset();
 }
@@ -1810,7 +2381,7 @@ function topple(b, push) {
     body.quaternion.setFromEuler((Math.random() - 0.5) * 0.03 * P.fragile, (Math.random() - 0.5) * 0.05 * P.fragile, (Math.random() - 0.5) * 0.03 * P.fragile);
     body.userData0 = { x: cx, y: (k + 0.5) * CH, z: cz };
     body.linearDamping = 0.02; body.angularDamping = 0.05;
-    body.sleepSpeedLimit = 0.4; body.sleepTimeLimit = 1;
+    body.sleepSpeedLimit = 0.5; body.sleepTimeLimit = 0.6;
     body.userData = { debris: true, bouncy: !!b.bouncy };
     if (push) {
       // struck at a point: containers level with the crate take the blow (off-centre, so they spin);
@@ -1847,19 +2418,28 @@ function physicsWorld(dt) {
   staticTimer -= dt;
   if (staticTimer <= 0 && (debris.length || trucks.some(t => t.body))) {
     staticTimer = 0.15;
+    let budget = 80;
     for (const d of debris.concat(trucks.filter(t => t.body).map(t => t.body), props.filter(q => q.body).map(q => q.body), movers.filter(q => q.body).map(q => q.body))) {
       if (d.sleepState === CANNON.Body.SLEEPING) continue;
+      if (--budget < 0) break;
       query(d.position, CW * 1.5, tmpNear);
       for (const b of tmpNear) staticBodyFor(b);
     }
   }
   world.gravity.set(0, -P.g, 0);
   world.defaultContactMaterial.friction = 0.3 - 0.2 * P.fragile;
-  world.step(1 / 90, dt, 8);
+  world.step(1 / 90, dt, 3);          // under heavy load, let physics time slip rather than stall the frame
   // merch only counts as wrecked once it's properly out of place or knocked well askew
   merchTimer -= dt;
   if (merchTimer <= 0) {
     merchTimer = 0.25; let c = 0; const lim = P.wreckDist;
+    // fewer solver passes when lots is moving; anything slow and well away from the action is put to sleep
+    let awake = 0;
+    for (const d of debris) if (d.sleepState !== CANNON.Body.SLEEPING) {
+      awake++;
+      if (d.velocity.lengthSquared() < 4 && Math.hypot(d.position.x - lp.x, d.position.z - lp.z) > 120) d.sleep();
+    }
+    world.solver.iterations = awake > 150 ? 4 : awake > 70 ? 6 : 8;
     for (const d of debris) {
       const o = d.userData0; if (!o) continue;
       const moved = Math.hypot(d.position.x - o.x, d.position.y - o.y, d.position.z - o.z) > lim;
@@ -1869,13 +2449,17 @@ function physicsWorld(dt) {
     merch = Math.round(c);
     if (merch >= P.merchMax && state === 'running') { state = 'done'; showBanner(`Dock wrecked: ${merch} containers of merch trashed. Tap Retry.`); }
   }
-  while (toTopple.length) { const b = toTopple.pop(); topple(b, b.pendingPush || null); b.pendingPush = null; b.pendingPoint = null; }
+  // spread a big cascade over a few frames
+  for (let k = 0; k < 8 && toTopple.length; k++) { const b = toTopple.shift(); topple(b, b.pendingPush || null); b.pendingPush = null; b.pendingPoint = null; }
 }
 const _q = new THREE.Quaternion(), _p = new THREE.Vector3(), _s = new THREE.Vector3();
 function renderDebris() {
   if (!debris.length) return;
   _s.set(CW * 0.98, CH * 0.98, CD * 0.98);
   debris.forEach((d, i) => {
+    const asleep = d.sleepState === CANNON.Body.SLEEPING;
+    if (asleep && d.drawnAsleep) return;          // already drawn where it came to rest
+    d.drawnAsleep = asleep;
     _p.set(d.position.x, d.position.y, d.position.z);
     _q.set(d.quaternion.x, d.quaternion.y, d.quaternion.z, d.quaternion.w);
     _m.compose(_p, _q, _s); debrisMesh.setMatrixAt(i, _m);
@@ -1896,8 +2480,10 @@ function reset() {
   Object.assign(crane, { phi: start.phi, om: 0, r: start.r, v: 0, L: L0 });
   hook.copy(polar(crane.phi, crane.r, HOOK_Y));
   lp.set(hook.x, HOOK_Y - crane.L, hook.z); lpp.copy(lp);
+  wrap = null; if (typeof barSide !== 'undefined') barSide.clear();
   state = 'countdown'; t = 0; damage = 0; settle = 0; cd = 3.2; cdSamples = [];
   tilt.cal = null; roundTilt = false; fmMood = 'waiting';
+  resetLoad();
   peopleCost = 0; committedCost = 0; lastCostSeen = 0; dropping = false;
   par = computePar();
 }
@@ -1967,7 +2553,51 @@ const readHoist = () => hoistIn || ((keys.e ? 1 : 0) - (keys.q ? 1 : 0));
 const vel = new THREE.Vector3(), tmp = new THREE.Vector3(), n = new THREE.Vector3();
 const H = 1 / 240;
 const hitThr = () => 3 * Math.sqrt(S);
+// The rope can catch over a gantry crane's girder. Then it bends there, and the length left below the bend
+// shortens as the hook moves away: swing under a girder and the crate gets flicked up and over.
+let wrap = null; const barSide = new Map(), wrapC = new THREE.Vector3();
+// bars are horizontal segments A-B at height hb: gantry girders and the portal bars over aisles
+function ropeBars() {
+  const out = [];
+  rtgs.forEach((r, i) => { for (const sx of [-1, 1]) { const gx = r.x + sx * r.depth / 2; out.push({ key: 'g' + i + sx, ax: gx, az: r.za, bx: gx, bz: r.zb, hb: r.h }); } });
+  portals.forEach((q, i) => out.push({ key: 'p' + i, ax: q.ax, az: q.az, bx: q.bx, bz: q.bz, hb: q.hb }));
+  return out;
+}
+// where the straight rope crosses the bar's height; which side of the bar that is; and how far along it
+function crossAt(bar) {
+  if (!(lp.y < bar.hb && HOOK_Y > bar.hb)) return null;
+  const sF = (HOOK_Y - bar.hb) / (HOOK_Y - lp.y);
+  const x = hook.x + (lp.x - hook.x) * sF, z = hook.z + (lp.z - hook.z) * sF;
+  const ux = bar.bx - bar.ax, uz = bar.bz - bar.az, L2 = ux * ux + uz * uz || 1;
+  const tt = ((x - bar.ax) * ux + (z - bar.az) * uz) / L2;
+  return { x, z, t: tt, side: Math.sign(ux * (z - bar.az) - uz * (x - bar.ax)) };
+}
+function updateWrap() {
+  const bars = ropeBars();
+  if (wrap) {
+    const bar = bars.find(b => b.key === wrap.key), cr = bar && crossAt(bar);
+    if (!bar || !cr || cr.side === wrap.side || cr.t < -0.05 || cr.t > 1.05) wrap = null;
+    else { const tt = clamp(cr.t, 0, 1); wrapC.set(bar.ax + (bar.bx - bar.ax) * tt, bar.hb + 1 * P.cscale, bar.az + (bar.bz - bar.az) * tt); }
+  }
+  if (!wrap) for (const bar of bars) {
+    const cr = crossAt(bar);
+    if (!cr || cr.t < 0 || cr.t > 1) { barSide.delete(bar.key); continue; }
+    const was = barSide.get(bar.key);
+    if (was && cr.side && cr.side !== was) {
+      wrap = { key: bar.key, side: was };
+      wrapC.set(bar.ax + (bar.bx - bar.ax) * cr.t, bar.hb + 1 * P.cscale, bar.az + (bar.bz - bar.az) * cr.t);
+      break;
+    }
+    barSide.set(bar.key, cr.side);
+  }
+}
 function ropeConstraint() {
+  if (wrap) {
+    const free = Math.max(R * 1.2, crane.L - hook.distanceTo(wrapC));
+    tmp.subVectors(lp, wrapC); const d = tmp.length();
+    if (d > free) lp.copy(wrapC).addScaledVector(tmp, free / d);
+    return;
+  }
   tmp.subVectors(lp, hook);
   const d = tmp.length();
   if (d > crane.L) lp.copy(hook).addScaledVector(tmp, crane.L / d);
@@ -2021,7 +2651,7 @@ function sphereDebris(d, h) {
   lpp.subVectors(lp, vel.multiplyScalar(h));
   d.wakeUp();
   d.applyImpulse(new CANNON.Vec3(-_ln.x * J, -_ln.y * J, -_ln.z * J), new CANNON.Vec3(lp.x - _ln.x * R, lp.y - _ln.y * R, lp.z - _ln.z * R));
-  if (bouncy) impact(-rel * 0.5);
+  if (bouncy) impact(-rel * 0.5); else loadShock(-rel);
 }
 function sphereBox(s, h, e, breakable) {
   const cx = clamp(lp.x, s.minX, s.maxX), cy = clamp(lp.y, 0, s.top), cz = clamp(lp.z, s.minZ, s.maxZ);
@@ -2045,7 +2675,8 @@ function sphereBox(s, h, e, breakable) {
     s.pendingPush = n.clone().multiplyScalar(-hitSpeed * 1.15).add(vel.clone().multiplyScalar(0.35 / H));
     s.pendingPush.y += hitSpeed * 0.15;
     s.pendingPoint = new THREE.Vector3().copy(lp).addScaledVector(n, -R);
-    damage = Math.min(100, damage + 1);
+    damage = Math.min(100, damage + (load === 'fragile' ? 4 : 1));
+    loadShock(hitSpeed);
     return;
   }
   lp.addScaledVector(n, pushOut);
@@ -2060,7 +2691,10 @@ function sphereBox(s, h, e, breakable) {
 }
 function impact(speed) {
   const thr = hitThr();
-  if (speed > thr && state === 'running') damage = Math.min(100, damage + (speed - thr) / thr * 12);
+  loadShock(speed);
+  if (state !== 'running') return;
+  const fragile = load === 'fragile', th2 = fragile ? thr * 0.5 : thr;
+  if (speed > th2) damage = Math.min(100, damage + (speed - th2) / thr * 12 * (fragile ? 3 : 1));
 }
 function approach(cur, target, acc, brake, h) {
   // braking (slowing, or reversing back towards zero) uses the braking rate
@@ -2084,6 +2718,8 @@ function physics(h) {
   hook.set(crane.r * Math.cos(crane.phi), HOOK_Y, crane.r * Math.sin(crane.phi));
   vel.subVectors(lp, lpp).multiplyScalar(1 - P.drag * h);
   lpp.copy(lp); lp.add(vel); lp.y -= P.g * h * h;
+  sloshStep(h);
+  updateWrap();
   for (let i = 0; i < 2; i++) { ropeConstraint(); collide(h); }
 }
 
@@ -2226,27 +2862,36 @@ function drawMap(dt) {
   mctx.restore();
 }
 
+function bests() { try { return JSON.parse(localStorage.getItem('evri-best') || '{}'); } catch (e) { return {}; } }
+function bestFor(seed) { return bests()[seed] || null; }
+function saveBest(seed, rec) { const all = bests(); all[seed] = rec; try { localStorage.setItem('evri-best', JSON.stringify(all)); } catch (e) {} }
+function showBest() {
+  const el = document.getElementById('bestNote'); if (!el) return;
+  const b = bestFor(yardSeed);
+  el.textContent = b ? `Your best on yard ${yardSeed}: ${b.t.toFixed(1)} s, ${'$' + Math.round(b.fee).toLocaleString('en-US')}${b.medal ? ', ' + b.medal : ''}.` : `No delivery on yard ${yardSeed} yet. Gold is under 60% of the clock, silver 80%, bronze in time.`;
+}
 // fee: £500 for the job, docked for lateness, crate damage and wrecked merch
-function fee() { return Math.max(0, FEE_BASE - lateCost() - damageCost()); }
-function shownFee() { return Math.max(0, FEE_BASE - lateCost() - committedCost); }
-const FEE_BASE = 5000, COST = { worker: 50, suit: 500, boss: 1000 };
+function fee() { return loadFail ? 0 : Math.max(0, feeBase() - lateCost() - damageCost()); }
+function shownFee() { return loadFail ? 0 : Math.max(0, feeBase() - lateCost() - committedCost); }
+const FEE_BASE = 5000, COST = { worker: 50, suit: 500, boss: 1000, smuggler: -200 };   // flattening a smuggler earns a tip-off reward
 let peopleCost = 0, committedCost = 0, lastCostSeen = 0, lastCostInc = 0, dropping = false;
 const lateCost = () => Math.round(Math.max(0, t - par) * 100);
-const damageCost = () => Math.round(2500 * damage / 100 + merch * 20 + trucksWrecked * 250 + peopleCost + propsWrecked);
+const damageCost = () => Math.round(feeBase() * 0.5 * damage / 100 + merch * 20 + trucksWrecked * 250 + peopleCost + propsWrecked + loadCostNow() + loadCost);
 const money = n => '$' + Math.round(n).toLocaleString('en-US');
 // costs pile up in a red number above the clock while the carnage continues, then drop into the fee
 function updateCostPopup() {
   const dc = damageCost(), now = performance.now(), pop = $('popup');
-  if (dc > lastCostSeen) { lastCostSeen = dc; lastCostInc = now; }
+  if (dc !== lastCostSeen) { lastCostSeen = dc; lastCostInc = now; }
   const pend = dc - committedCost;
-  if (pend > 0 && !dropping) {
-    pop.textContent = '−' + money(pend);
+  if (pend !== 0 && !dropping) {
+    pop.textContent = (pend > 0 ? '−' : '+') + money(Math.abs(pend));
+    pop.classList.toggle('bonus', pend < 0);
     if (now - lastCostInc > 900) {
       dropping = true; const at = dc;
       pop.classList.add('drop'); $('fee').classList.add('hit');
       setTimeout(() => { committedCost = at; pop.textContent = ''; pop.classList.remove('drop'); $('fee').classList.remove('hit'); dropping = false; }, 460);
     }
-  } else if (pend <= 0 && !dropping) pop.textContent = '';
+  } else if (pend === 0 && !dropping) pop.textContent = '';
 }
 
 // ---------------- UI & loop ----------------
@@ -2266,29 +2911,43 @@ function checkGoal(dt) {
     settle += dt;
     if (settle > 0.8) {
       state = 'done';
+      // what the load came to
+      let extra = '';
+      if (load === 'dodgy') { if (Math.random() < 0.55) { loadCost -= 2500; extra = ' Inside: $2,500 in used notes, now yours.'; } else extra = ' Inside: socks. Nice socks, mind.'; }
+      if (load === 'monkeys') { const a = monkeysAboard(); extra = a === 5 ? ' All five monkeys delivered!' : ` ${a} of 5 monkeys delivered.`; for (const mk of monkeys) if (mk.mode === 'ride') mk.mode = 'run'; }
+      if (load === 'hot') extra = ' Not a single bump. Impressive.';
+      if (load === 'liquid') extra = spill < 1 ? ' Not a drop spilt.' : ` ${Math.round(100 - spill)}% of it made it.`;
       const over = Math.max(0, t - par), f = fee();
       fmMood = over > 0 ? 'fuming' : 'happy';
+      const medal = t <= par * 0.6 ? 'Gold' : t <= par * 0.8 ? 'Silver' : t <= par ? 'Bronze' : '';
+      const prevBest = bestFor(yardSeed), isBest = !prevBest || t < prevBest.t;
+      if (isBest) saveBest(yardSeed, { t, fee: f, medal });
+      const tail = (medal ? ` ${medal} medal!` : '') + (isBest ? (prevBest ? ` New best on yard ${yardSeed}.` : '') : ` Best here: ${prevBest.t.toFixed(1)} s.`);
       showBanner(over > 0
-        ? `Delivered ${over.toFixed(1)} s late. The foreman is fuming. Fee ${money(f)}.`
-        : `Delivered with ${(par - t).toFixed(1)} s to spare! Fee ${money(f)}.` + (damage > 1 ? ` (Crate ${Math.round(damage)}% damaged.)` : ''));
+        ? `Delivered ${over.toFixed(1)} s late. The foreman is fuming. Fee ${money(f)}.` + extra + tail
+        : `Delivered with ${(par - t).toFixed(1)} s to spare! Fee ${money(f)}.` + extra + (damage > 1 ? ` (Load ${Math.round(damage)}% damaged.)` : '') + tail);
+      showBest();
     }
   } else settle = 0;
   if (damage >= 100) { state = 'done'; showBanner('Crate wrecked. Tap Retry.'); }
   if (beyondQuay(lp.x, lp.z, 0) && lp.y < R + 1) { state = 'done'; damage = 100; showBanner('Splash. The crate is at the bottom of the harbour.'); }
 }
 const ropeUp = new THREE.Vector3(0, 1, 0);
-let spotY = 0;
+let spotY = 0, tiltOver = 0;
 function render(dt) {
   placeCrane();
   jibGroup.rotation.y = -crane.phi;
   trolley.position.set(hook.x, HOOK_Y + 0.6 * S, hook.z); trolley.rotation.y = -crane.phi;
   // rope: a cylinder with a minimum on-screen thickness
-  const top = _p.set(hook.x, HOOK_Y, hook.z), bot = tmp.set(lp.x, lp.y + R * 0.8, lp.z);
-  const mid = new THREE.Vector3().addVectors(top, bot).multiplyScalar(0.5);
-  const len = top.distanceTo(bot);
-  const thick = Math.max(0.12, camera.position.distanceTo(mid) * 0.0018 * (P.fov / 65));
-  rope.position.copy(mid); rope.scale.set(thick, len, thick);
-  rope.quaternion.setFromUnitVectors(ropeUp, new THREE.Vector3().subVectors(top, bot).normalize());
+  const ropeSeg = (mesh, a, b) => {
+    const mid = new THREE.Vector3().addVectors(a, b).multiplyScalar(0.5), len = a.distanceTo(b);
+    const thick = Math.max(0.12, camera.position.distanceTo(mid) * 0.0018 * (P.fov / 65));
+    mesh.position.copy(mid); mesh.scale.set(thick, Math.max(0.01, len), thick);
+    mesh.quaternion.setFromUnitVectors(ropeUp, new THREE.Vector3().subVectors(a, b).normalize());
+  };
+  const top = new THREE.Vector3(hook.x, HOOK_Y, hook.z), bot = new THREE.Vector3(lp.x, lp.y + R * 0.8, lp.z);
+  if (wrap) { ropeSeg(rope, top, wrapC); ropeSeg(rope2, wrapC, bot); rope2.visible = true; }
+  else { ropeSeg(rope, top, bot); rope2.visible = false; }
   crate.position.copy(lp);
   const dir = new THREE.Vector3().subVectors(hook, lp); const dl = dir.length();
   if (dl > 0.01) crate.quaternion.setFromUnitVectors(up, dir.divideScalar(dl));
@@ -2301,11 +2960,12 @@ function render(dt) {
   lg.setXYZ(0, hook.x, HOOK_Y, hook.z); lg.setXYZ(1, hook.x, ty + 0.2, hook.z); lg.needsUpdate = true;
   spot.position.set(hook.x, ty + 0.35, hook.z); spot.scale.setScalar(Math.max(2.5, R * 0.9));
   const sy = surfaceBelow(lp.x, lp.z, lp.y);
+  blob.visible = !P.shadows;
   blob.position.set(lp.x, sy + 0.2, lp.z);
   blob.material.opacity = clamp(0.6 - (lp.y - sy) / 120, 0.15, 0.6);
   plumb.visible = P.plumb;
   if (P.plumb) { const pp = plumbGeo.attributes.position; pp.setXYZ(0, lp.x, lp.y, lp.z); pp.setXYZ(1, lp.x, sy, lp.z); pp.needsUpdate = true; plumb.computeLineDistances(); }
-  if (flash > 0) { flash -= dt; crateMat.emissive.setHex(flash > 0 ? 0x7a1450 : 0x000000); }
+  if (flash > 0) { flash -= dt; if (crateMatNow.emissive) crateMatNow.emissive.setHex(flash > 0 ? 0x7a1450 : 0x000000); }
   renderDebris();
   updateCamera(dt);
   renderer.render(scene, camera);
@@ -2314,15 +2974,26 @@ function render(dt) {
   te.textContent = state === 'countdown' ? par.toFixed(0) : left >= 0 ? left.toFixed(1) : '+' + (-left).toFixed(1);
   te.classList.toggle('late', left < 0 && state === 'running');
   te.classList.toggle('urgent', left >= 0 && left < 10 && state === 'running');
-  $('fee').textContent = state === 'countdown' ? `seconds to deliver · ${money(FEE_BASE)} job` : left < 0 ? `LATE · fee ${money(shownFee())}` : `fee ${money(shownFee())}`;
+  $('fee').textContent = state === 'countdown' ? `seconds to deliver · ${money(feeBase())} job` : left < 0 ? `LATE · fee ${money(shownFee())}` : `fee ${money(shownFee())}`;
   if (state !== 'countdown') updateCostPopup();
   $('joy').hidden = roundTilt && !joy.active;
+  // tipped well past the useful range? show a level bubble: the dot sits where the phone leans; bring it back to the middle
+  if (roundTilt && tilt.cal && state !== 'done') {
+    let dx = tilt.rx - tilt.cal.x, dy = tilt.ry - tilt.cal.y;
+    dx = Math.atan2(Math.sin(dx * DEG), Math.cos(dx * DEG)) / DEG; dy = Math.atan2(Math.sin(dy * DEG), Math.cos(dy * DEG)) / DEG;
+    const m = Math.hypot(dx, dy), lim = Math.max(P.tiltRange * 2, 14);
+    tiltOver = m > lim ? Math.min(1, tiltOver + dt * 4) : Math.max(0, tiltOver - dt * 3);
+    $('level').hidden = tiltOver <= 0;
+    if (tiltOver > 0) { const k = Math.min(1, m / (lim * 2)) * 46 / (m || 1); $('levelDot').style.transform = `translate(${dx * k}px, ${dy * k}px)`; $('level').style.opacity = tiltOver; }
+  } else $('level').hidden = true;
   $('clock').classList.toggle('lifted', P.winch);
   if (state === 'running' && left < 0) fmMood = 'cross';
   animateForeman(dt);
   drawWorkers();
   drawBirds();
-  $('dmg').firstElementChild.style.width = damage + '%';
+  if (boomT > 0) { boomT -= dt; const k2 = 1 - boomT / 0.6; boom.scale.setScalar(4 + k2 * 40 * P.cscale); boom.material.opacity = Math.max(0, 0.9 * (1 - k2)); if (boomT <= 0) boom.visible = false; }
+  $('dmg').firstElementChild.style.width = loadMeter() + '%';
+  $('loadLabel').textContent = load === 'monkeys' ? `monkeys ${monkeysAboard()}/5` : LOADS[load].meter;
   $('merch').firstElementChild.style.width = Math.min(100, merch / P.merchMax * 100) + '%';
   $('speed').textContent = Math.round(vel.subVectors(lp, lpp).length() / H * 3.6) + ' km/h' + (roundTilt ? ' · tilt steering' : '');
 }
@@ -2333,6 +3004,7 @@ function frame(now) {
   if (!paused && state === 'countdown') {
     cd -= dt;
     $('banner').classList.add('big');
+    $('job').hidden = false;
     if (cd > 0) showBanner(cd > 2.9 ? 'Hold steady' : String(Math.ceil(cd)));
     else {
       if (cdSamples.length) { const n = cdSamples.length; tilt.cal = { x: cdSamples.reduce((a, q) => a + q[0], 0) / n, y: cdSamples.reduce((a, q) => a + q[1], 0) / n }; }
@@ -2341,7 +3013,7 @@ function frame(now) {
       state = 'running'; showBanner('Go!'); goT = 0.7;
     }
   }
-  if (goT > 0) { goT -= dt; if (goT <= 0) { $('banner').classList.remove('big'); if (state === 'running') showBanner(''); } }
+  if (goT > 0) { goT -= dt; if (goT <= 0) { $('job').hidden = true; $('banner').classList.remove('big'); if (state === 'running') showBanner(''); } }
   if (!paused) {
     if (state === 'running') {
       const spd = vel.subVectors(lp, lpp).length() / H;
@@ -2358,6 +3030,9 @@ function frame(now) {
     updateFurniture(simDt);
     updateMovers(simDt);
     updateBirds(simDt);
+    updateMonkeys(simDt);
+    updateDrops(simDt);
+    geigerStep(simDt);
   }
   render(dt);
   requestAnimationFrame(frame);
@@ -2369,7 +3044,8 @@ $('cam').onclick = () => { camMode = cams[(cams.indexOf(camMode) + 1) % cams.len
 $('resetView').onclick = () => { Object.assign(view[camMode], { z: 1, px: 0, py: 0 }); };
 $('hints').onclick = () => { hints.visible = !hints.visible; $('hints').textContent = 'Path: ' + (hints.visible ? 'shown' : 'hidden'); };
 $('retry').onclick = reset;
-$('newc').onclick = newYard;
+$('newc').onclick = () => newYard();
+$('seedBtn').onclick = () => { const v = parseInt($('seedIn').value, 10); if (isFinite(v)) { newYard(v); closePanel(); } };
 function openPanel() { $('panel').hidden = false; $('scrim').hidden = false; $('tune').setAttribute('aria-expanded', 'true'); paused = true; }
 function closePanel() { $('panel').hidden = true; $('scrim').hidden = true; $('tune').setAttribute('aria-expanded', 'false'); paused = false; last = performance.now(); }
 $('tune').onclick = () => $('panel').hidden ? openPanel() : closePanel();
@@ -2398,7 +3074,7 @@ function fillPresetList(sel) {
 }
 function syncControls() {
   for (const b of bound) b.el.value = P[b.key];
-  $('tiltChk').checked = P.tilt; $('quayChk').checked = P.quay; $('soundChk').checked = P.sound; $('plumbChk').checked = P.plumb; $('winchChk').checked = P.winch; $('shadowChk').checked = P.shadows; $('mapRot').checked = P.mapRot;
+  $('tiltChk').checked = P.tilt; $('loadSel').value = P.load; $('quayChk').checked = P.quay; $('floorChk').checked = P.floor; $('soundChk').checked = P.sound; $('plumbChk').checked = P.plumb; $('winchChk').checked = P.winch; $('shadowChk').checked = P.shadows; $('mapRot').checked = P.mapRot;
   $('hoist').hidden = !P.winch; sun.castShadow = P.shadows;
   setFov(); refreshOutputs();
 }
@@ -2432,10 +3108,16 @@ bind('workers', 'workers', v => v);
 bind('trucks', 'trucks', v => v);
 bind('stackers', 'stackers', v => v);
 bind('rtgs', 'rtgs', v => v);
+bind('bars', 'bars', v => v);
 bind('lights', 'lights', v => v);
 bind('clutter', 'clutter', v => v.toFixed(2) + '×');
 bind('birds', 'birds', v => v);
 bind('gulls', 'gulls', v => v);
+bind('parked', 'parked', v => v);
+bind('singles', 'singles', v => v);
+bind('openBoxes', 'openBoxes', v => v);
+bind('zones', 'zones', v => v);
+bind('flybys', 'flybys', v => v ? v.toFixed(2) + '× as often' : 'never');
 bind('peopleSize', 'peopleSize', v => v.toFixed(2) + '× life size', () => { if (goal) placeForeman(); for (const tk of trucks) tk.g.scale.setScalar(truckScale()); for (const m of movers) m.g.scale.setScalar(P.peopleSize); });
 bind('merchMax', 'merchMax', v => v + ' containers');
 bind('slewMax', 'slewMax', v => v + '°/s');
@@ -2460,9 +3142,11 @@ $('shadowChk').onchange = e => { P.shadows = e.target.checked; sun.castShadow = 
 $('mapRot').onchange = e => { P.mapRot = e.target.checked; };
 $('tiltChk').onchange = e => { P.tilt = e.target.checked; tilt.cal = null; };
 $('soundChk').onchange = e => { P.sound = e.target.checked; };
+$('loadSel').onchange = e => { P.load = e.target.value; saveLast(); load = pickLoad(); reset(); };
 $('quayChk').onchange = e => { P.quay = e.target.checked; };
+$('floorChk').onchange = e => { P.floor = e.target.checked; if (floorMesh) floorMesh.visible = P.floor; };
 for (const id of ['scale', 'loadR', 'cscale']) $(id).addEventListener('input', refreshOutputs);
-for (const id of ['plumbChk', 'winchChk', 'shadowChk', 'mapRot', 'tiltChk', 'soundChk', 'quayChk']) $(id).addEventListener('change', saveLast);
+for (const id of ['plumbChk', 'winchChk', 'shadowChk', 'mapRot', 'tiltChk', 'soundChk', 'quayChk', 'floorChk']) $(id).addEventListener('change', saveLast);
 $('presetSave').onclick = () => {
   const name = $('presetName').value.trim();
   if (!name) { note('Give the preset a name first.'); return; }
@@ -2493,7 +3177,7 @@ function share(text, what) {
   else note(`${what} is selected in the box: copy it from there.`);
 }
 $('exportBtn').onclick = () => share('EVRI1:' + encodeSettings(P), 'Settings');
-$('linkBtn').onclick = () => share(location.href.split('#')[0] + '#s=' + encodeSettings(P), 'Share link');
+$('linkBtn').onclick = () => share(location.href.split('#')[0] + '#s=' + encodeSettings(P) + '&y=' + yardSeed, 'Share link (this yard and your settings)');
 $('importBtn').onclick = () => {
   let src;
   try { src = parseSettingsText($('ioText').value); } catch (e) { note("That doesn't look like settings text or a share link."); return; }
@@ -2518,6 +3202,7 @@ $('resetBtn').onclick = () => {
   syncControls(); rebuild(); saveLast(); note('Back to the defaults.');
 };
 
+pendingSeed = linkSeed;
 setFov(); resize(); rebuild(); syncControls();
 requestAnimationFrame(frame);
 });
